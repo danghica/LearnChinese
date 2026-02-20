@@ -26,7 +26,6 @@ type Props = {
   newWordsPerConversation: number;
   topic?: string;
   debugMode?: boolean;
-  onNewConversation?: () => void;
 };
 
 export default function ChatView({
@@ -35,7 +34,6 @@ export default function ChatView({
   newWordsPerConversation,
   topic,
   debugMode = false,
-  onNewConversation,
 }: Props) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [convId, setConvId] = useState<string | null>(conversationId);
@@ -61,6 +59,58 @@ export default function ChatView({
     });
   }, []);
 
+  const sendRequest = useCallback(
+    async (requestBody: { messages: { role: string; content: string }[]; conversationId: string | null; newWordsPerConversation: number; topic?: string }) => {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+      const data = await res.json();
+      if (debugMode) appendTraffic({ url: "/api/chat", method: "POST", body: requestBody }, { status: res.status, body: data });
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      return data;
+    },
+    [debugMode, appendTraffic]
+  );
+
+  const handleNextChat = useCallback(async () => {
+    const text = input.trim();
+    if (loading) return;
+    setLookupNote(null);
+    setConvId(null);
+    setMessages([]);
+    setError(null);
+    setLoading(true);
+    const body = {
+      messages: [{ role: "user", content: text || "Start" }],
+      conversationId: null,
+      newWordsPerConversation,
+      topic: text ? text : undefined,
+    };
+    try {
+      const data = await sendRequest(body);
+      setConvId(data.conversationId ?? null);
+      const userContent = text || "Start";
+      const assistantMsg: Message = {
+        id: data.messageId,
+        role: "assistant",
+        content: data.content,
+        segments: data.segments?.map((s: { word: string }) => s.word) ?? undefined,
+      };
+      setMessages([
+        { id: crypto.randomUUID(), role: "user", content: userContent },
+        assistantMsg,
+      ]);
+      setInput("");
+      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  }, [input, loading, newWordsPerConversation, sendRequest]);
+
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
@@ -77,14 +127,7 @@ export default function ChatView({
         topic,
       };
       try {
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        const data = await res.json();
-        if (debugMode) appendTraffic({ url: "/api/chat", method: "POST", body }, { status: res.status, body: data });
-        if (!res.ok) throw new Error(data.error || "Request failed");
+        const data = await sendRequest(body);
         if (data.conversationId) setConvId(data.conversationId);
         const assistantMsg: Message = {
           id: data.messageId,
@@ -100,7 +143,7 @@ export default function ChatView({
         setLoading(false);
       }
     },
-    [input, loading, messages, convId, newWordsPerConversation, topic, debugMode, appendTraffic]
+    [input, loading, messages, convId, newWordsPerConversation, topic, sendRequest]
   );
 
   const handleWordClick = useCallback(async (word: string) => {
@@ -131,63 +174,8 @@ export default function ChatView({
 
   return (
     <div className="flex flex-col flex-1 min-h-0 max-w-3xl mx-auto w-full">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-1">
-        {onNewConversation && (
-          <div className="mb-2">
-            <button
-              type="button"
-              onClick={onNewConversation}
-              className="text-sm text-blue-600 hover:bg-blue-50 px-2 py-1 rounded"
-            >
-              New conversation
-            </button>
-          </div>
-        )}
-        {messages.length === 0 && !loading && (
-          <div className="flex justify-center py-6">
-            <button
-              type="button"
-              onClick={() => {
-                const starter = "Start";
-                const reqBody = {
-                  messages: [{ role: "user", content: starter }],
-                  conversationId: convId,
-                  newWordsPerConversation,
-                  topic,
-                };
-                setLoading(true);
-                setError(null);
-                fetch("/api/chat", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(reqBody),
-                })
-                  .then((res) => res.json().then((data) => ({ res, data })))
-                  .then(({ res, data }) => {
-                    if (debugMode) appendTraffic({ url: "/api/chat", method: "POST", body: reqBody }, { status: res.status, body: data });
-                    if (!data.error) {
-                      setConvId(data.conversationId ?? null);
-                      setMessages([
-                        { id: crypto.randomUUID(), role: "user", content: starter, segments: undefined },
-                        {
-                          id: data.messageId,
-                          role: "assistant",
-                          content: data.content,
-                          segments: data.segments?.map((s: { word: string }) => s.word),
-                        },
-                      ]);
-                      scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
-                    } else setError(data.error);
-                  })
-                  .catch(() => setError("Something went wrong"))
-                  .finally(() => setLoading(false));
-              }}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-            >
-              Start conversation
-            </button>
-          </div>
-        )}
+      {/* Output text box: read-only area showing assistant (and optionally thread) output */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-1 min-h-0">
         {messages.map((m) => (
           <div key={m.id}>
             <MessageBlock
@@ -212,9 +200,10 @@ export default function ChatView({
           </div>
         )}
       </div>
-      {error && <p className="text-red-600 text-sm px-4">{error}</p>}
-      <form onSubmit={handleSubmit} className="p-4 border-t bg-white">
-        <div className="flex gap-2">
+      {error && <p className="text-red-600 text-sm px-4 shrink-0">{error}</p>}
+      {/* Input area + Send + Next chat */}
+      <form onSubmit={handleSubmit} className="p-4 border-t bg-white shrink-0">
+        <div className="flex flex-wrap gap-2 items-end">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -229,29 +218,39 @@ export default function ChatView({
             }}
             placeholder="Type your message..."
             rows={2}
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring focus:ring-blue-200 focus:border-blue-500 resize-none"
+            className="flex-1 min-w-[200px] px-3 py-2 border border-gray-300 rounded-md focus:ring focus:ring-blue-200 focus:border-blue-500 resize-none"
             disabled={loading}
           />
-          <button
-            type="submit"
-            disabled={loading || !input.trim()}
-            className="py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Send
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={loading || !input.trim()}
+              className="py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Send
+            </button>
+            <button
+              type="button"
+              onClick={handleNextChat}
+              disabled={loading}
+              className="py-2 px-4 bg-gray-600 text-white rounded-md hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next chat
+            </button>
+          </div>
         </div>
       </form>
       {debugMode && (
         <div
           ref={debugPanelRef}
-          className="border-t border-gray-300 bg-gray-900 text-gray-100 flex flex-col min-h-0 max-h-[220px]"
+          className="border-t border-gray-300 bg-gray-900 text-gray-100 flex flex-col min-h-0 max-h-[220px] shrink-0"
         >
           <div className="px-3 py-1.5 text-xs font-medium text-gray-400 border-b border-gray-700 shrink-0">
             LLM traffic (POST /api/chat)
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-2 text-xs font-mono">
             {trafficLog.length === 0 && (
-              <p className="text-gray-500">No requests yet. Send a message or click Start conversation.</p>
+              <p className="text-gray-500">No requests yet. Send a message or click Next chat.</p>
             )}
             {trafficLog.map((entry) => (
               <details key={entry.id} className="bg-gray-800 rounded p-2">
