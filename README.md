@@ -23,6 +23,35 @@ Single-user web app to practice Chinese with vocabulary-based conversations. The
 - **Seed file:** `data/words-3000.json` — array of `{ word, frequency, pinyin, english_translation }`. Frequency is rank (1 = most frequent). Replace with a full 3000-word list (e.g. CEDICT + SUBTLEX) for production.
 - **Database:** SQLite at `data/app.sqlite` (or path in `DATABASE_URL`).
 
+## Deploy (non-local)
+
+The app uses **SQLite** and **native modules** (better-sqlite3, @node-rs/jieba), so you need a host that gives a **persistent filesystem** and a normal Node runtime (not serverless-only like Vercel’s default).
+
+**Recommended:**
+
+1. **Railway** (https://railway.app)  
+   - Connect your GitHub repo.  
+   - Add a **Volume** and mount it (e.g. `/data`).  
+   - Set env: `DATABASE_URL=/data/app.sqlite`, `GROQ_API_KEY=your_key`.  
+   - Build: `npm install && npm run build`.  
+   - Start: `npm run start`.  
+   - Run seed once (Railway CLI or one-off run): `npm run seed` (with `DATABASE_URL` set so the DB is on the volume).
+
+2. **Render** (https://render.com)  
+   - New **Web Service** from repo.  
+   - Add **Disk** (persistent), mount path e.g. `/data`.  
+   - Env: `DATABASE_URL=/data/app.sqlite`, `GROQ_API_KEY=your_key`.  
+   - Build: `npm install && npm run build`.  
+   - Start: `npm run start`.  
+   - Run `npm run seed` once (e.g. via a one-off job or SSH) so the DB on the disk is seeded.
+
+3. **Fly.io** (https://fly.io)  
+   - Use a **volume** for SQLite.  
+   - Set `DATABASE_URL` to a path on the volume, set `GROQ_API_KEY`.  
+   - Build and run Node; run `npm run seed` once after first deploy.
+
+**Not a good fit:** Vercel’s serverless (no persistent SQLite). To use Vercel you’d need to switch to a hosted DB (e.g. Turso, Neon) and avoid native addons in serverless.
+
 ## Design
 
 - **New / Continue:** Entry screen; new prompts for optional topic (English), then chat. Continue loads the current (most recent) conversation.
