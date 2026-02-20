@@ -68,11 +68,12 @@ export async function POST(request: NextRequest) {
       content: m.content,
     }));
     if (isNew && userMessages.length === 1 && userMessages[0].role === "user") {
-      const firstContent = (userMessages[0].content || "").trim().toLowerCase();
-      const isStarterOnly = !firstContent || /^(start|begin|go|hi|hello|start conversation)$/.test(firstContent);
-      if (isStarterOnly) {
-        userMessages = [{ role: "user" as const, content: "Please start the conversation in Chinese. Greet me and ask the first question." }];
-      }
+      const firstContent = (userMessages[0].content || "").trim();
+      const explicitPrompt =
+        firstContent.length === 0 || /^(start|begin|go|hi|hello|start conversation)$/i.test(firstContent)
+          ? "Please start the conversation in Chinese. Greet me and ask the first question."
+          : `The user wants to start a conversation. Their message (topic or first input, often in English) is: "${firstContent}". Reply with your first message in Chinese: greet them and start the conversation on this topic.`;
+      userMessages = [{ role: "user" as const, content: explicitPrompt }];
     }
     const apiMessages: { role: "user" | "assistant" | "system"; content: string }[] = [
       { role: "system", content: systemPrompt },
@@ -83,7 +84,8 @@ export async function POST(request: NextRequest) {
     const displayContent = stripMisusedJson(rawContent);
     appendMessage(conversationId, "user", lastMessage.content);
     const messageId = appendMessage(conversationId, "assistant", displayContent);
-    if (messages.length >= 2) {
+    const isFirstUserMessage = isNew && messages.length === 1;
+    if (messages.length >= 2 && !isFirstUserMessage) {
       const lastUserContent = lastMessage.content;
       const userWords = segment(lastUserContent);
       const vocabSet = new Set(vocabList);

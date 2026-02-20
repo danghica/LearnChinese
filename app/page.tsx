@@ -6,6 +6,7 @@ import ChatView from "@/components/ChatView";
 import SettingsMenu from "@/components/SettingsMenu";
 
 const NEW_WORDS_KEY = "chinese-vocab-newWordsPerConversation";
+const DEBUG_MODE_KEY = "chinese-vocab-debugMode";
 const DEFAULT_NEW_WORDS = 10;
 
 function getStoredNewWords(): number {
@@ -15,16 +16,23 @@ function getStoredNewWords(): number {
   return Number.isNaN(n) ? DEFAULT_NEW_WORDS : Math.max(1, Math.min(50, n));
 }
 
+function getStoredDebugMode(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(DEBUG_MODE_KEY) === "true";
+}
+
 export default function Home() {
   const [view, setView] = useState<"entry" | "chat">("entry");
   const [topic, setTopic] = useState<string>("");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [initialMessages, setInitialMessages] = useState<{ id: string; role: "user" | "assistant"; content: string }[]>([]);
   const [newWordsPerConversation, setNewWordsPerConversation] = useState(DEFAULT_NEW_WORDS);
+  const [debugMode, setDebugMode] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     setNewWordsPerConversation(getStoredNewWords());
+    setDebugMode(getStoredDebugMode());
   }, []);
 
   const handleNew = useCallback((t: string) => {
@@ -60,6 +68,11 @@ export default function Home() {
     if (typeof window !== "undefined") localStorage.setItem(NEW_WORDS_KEY, String(n));
   }, []);
 
+  const handleDebugChange = useCallback((on: boolean) => {
+    setDebugMode(on);
+    if (typeof window !== "undefined") localStorage.setItem(DEBUG_MODE_KEY, on ? "true" : "false");
+  }, []);
+
   if (view === "entry") {
     return (
       <main className="min-h-0 bg-gray-50 max-h-[85vh]">
@@ -91,6 +104,8 @@ export default function Home() {
             <SettingsMenu
               newWordsPerConversation={newWordsPerConversation}
               onNewWordsChange={handleNewWordsChange}
+              debugMode={debugMode}
+              onDebugChange={handleDebugChange}
               open={settingsOpen}
               onClose={() => setSettingsOpen(false)}
             />
@@ -102,6 +117,7 @@ export default function Home() {
         conversationId={conversationId}
         newWordsPerConversation={newWordsPerConversation}
         topic={topic || undefined}
+        debugMode={debugMode}
       />
     </main>
   );

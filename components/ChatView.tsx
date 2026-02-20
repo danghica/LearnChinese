@@ -11,11 +11,21 @@ export type Message = {
   segments?: string[];
 };
 
+export type TrafficLogEntry = {
+  id: string;
+  request: { url: string; method: string; body: unknown };
+  response: { status: number; body: unknown };
+  timestamp: string;
+};
+
+const MAX_TRAFFIC_LOG = 20;
+
 type Props = {
   initialMessages: Message[];
   conversationId: string | null;
   newWordsPerConversation: number;
   topic?: string;
+  debugMode?: boolean;
 };
 
 export default function ChatView({
@@ -23,6 +33,7 @@ export default function ChatView({
   conversationId,
   newWordsPerConversation,
   topic,
+  debugMode = false,
 }: Props) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [convId, setConvId] = useState<string | null>(conversationId);
@@ -31,13 +42,22 @@ export default function ChatView({
   const [error, setError] = useState<string | null>(null);
   const [wordLookup, setWordLookup] = useState<Record<string, { pinyin: string; english_translation: string }>>({});
   const [lookupNote, setLookupNote] = useState<{ word: string; pinyin: string; english_translation: string } | null>(null);
+  const [trafficLog, setTrafficLog] = useState<TrafficLogEntry[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const debugPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMessages(initialMessages);
     setConvId(conversationId);
     setLookupNote(null);
   }, [initialMessages, conversationId]);
+
+  const appendTraffic = useCallback((request: { url: string; method: string; body: unknown }, response: { status: number; body: unknown }) => {
+    setTrafficLog((prev) => {
+      const next = [{ id: crypto.randomUUID(), request, response, timestamp: new Date().toISOString() }, ...prev];
+      return next.slice(0, MAX_TRAFFIC_LOG);
+    });
+  }, []);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -48,18 +68,20 @@ export default function ChatView({
       setLookupNote(null);
       setLoading(true);
       setError(null);
+      const body = {
+        messages: [...messages.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: text }],
+        conversationId: convId,
+        newWordsPerConversation,
+        topic,
+      };
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages: [...messages.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: text }],
-            conversationId: convId,
-            newWordsPerConversation,
-            topic,
-          }),
+          body: JSON.stringify(body),
         });
         const data = await res.json();
+        if (debugMode) appendTraffic({ url: "/api/chat", method: "POST", body }, { status: res.status, body: data });
         if (!res.ok) throw new Error(data.error || "Request failed");
         if (data.conversationId) setConvId(data.conversationId);
         const assistantMsg: Message = {
@@ -76,7 +98,7 @@ export default function ChatView({
         setLoading(false);
       }
     },
-    [input, loading, messages, convId, newWordsPerConversation, topic]
+    [input, loading, messages, convId, newWordsPerConversation, topic, debugMode, appendTraffic]
   );
 
   const handleWordClick = useCallback(async (word: string) => {
@@ -114,20 +136,22 @@ export default function ChatView({
               type="button"
               onClick={() => {
                 const starter = "Start";
+                const reqBody = {
+                  messages: [{ role: "user", content: starter }],
+                  conversationId: convId,
+                  newWordsPerConversation,
+                  topic,
+                };
                 setLoading(true);
                 setError(null);
                 fetch("/api/chat", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    messages: [{ role: "user", content: starter }],
-                    conversationId: convId,
-                    newWordsPerConversation,
-                    topic,
-                  }),
+                  body: JSON.stringify(reqBody),
                 })
-                  .then((res) => res.json())
-                  .then((data) => {
+                  .then((res) => res.json().then((data) => ({ res, data })))
+                  .then(({ res, data }) => {
+                    if (debugMode) appendTraffic({ url: "/api/chat", method: "POST", body: reqBody }, { status: res.status, body: data });
                     if (!data.error) {
                       setConvId(data.conversationId ?? null);
                       setMessages([
@@ -195,6 +219,42 @@ export default function ChatView({
           </button>
         </div>
       </form>
+      {debugMode && (
+        <div
+          ref={debugPanelRef}
+          className="border-t border-gray-300 bg-gray-900 text-gray-100 flex flex-col min-h-0 max-h-[220px]"
+        >
+          <div className="px-3 py-1.5 text-xs font-medium text-gray-400 border-b border-gray-700 shrink-0">
+            LLM traffic (POST /api/chat)
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-2 text-xs font-mono">
+            {trafficLog.length === 0 && (
+              <p className="text-gray-500">No requests yet. Send a message or click Start conversation.</p>
+            )}
+            {trafficLog.map((entry) => (
+              <details key={entry.id} className="bg-gray-800 rounded p-2">
+                <summary className="cursor-pointer text-gray-300">
+                  {entry.timestamp} — {entry.request.method} {entry.request.url} → {entry.response.status}
+                </summary>
+                <div className="mt-2 space-y-2 text-gray-400">
+                  <div>
+                    <span className="text-amber-400">Request body:</span>
+                    <pre className="mt-0.5 whitespace-pre-wrap break-all overflow-x-auto">
+                      {JSON.stringify(entry.request.body, null, 2)}
+                    </pre>
+                  </div>
+                  <div>
+                    <span className="text-amber-400">Response ({entry.response.status}):</span>
+                    <pre className="mt-0.5 whitespace-pre-wrap break-all overflow-x-auto">
+                      {JSON.stringify(entry.response.body, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              </details>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
