@@ -68,7 +68,7 @@ export default function ChatView({
           content: data.content,
           segments: data.segments?.map((s: { word: string }) => s.word) ?? undefined,
         };
-        setMessages((prev) => [...prev, { id: "u", role: "user", content: text }, assistantMsg]);
+        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", content: text }, assistantMsg]);
         if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong");
@@ -131,7 +131,7 @@ export default function ChatView({
                     if (!data.error) {
                       setConvId(data.conversationId ?? null);
                       setMessages([
-                        { id: "u", role: "user", content: starter, segments: undefined },
+                        { id: crypto.randomUUID(), role: "user", content: starter, segments: undefined },
                         {
                           id: data.messageId,
                           role: "assistant",
