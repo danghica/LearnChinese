@@ -28,7 +28,7 @@ export default function Home() {
   const [initialMessages, setInitialMessages] = useState<{ id: string; role: "user" | "assistant"; content: string }[]>([]);
   const [newWordsPerConversation, setNewWordsPerConversation] = useState(DEFAULT_NEW_WORDS);
   const [debugMode, setDebugMode] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(true);
 
   useEffect(() => {
     setNewWordsPerConversation(getStoredNewWords());
@@ -75,24 +75,9 @@ export default function Home() {
 
   if (view === "entry") {
     return (
-      <main className="min-h-0 bg-gray-50 max-h-[85vh]">
-        <EntryScreen onNew={handleNew} onContinue={handleContinue} />
-      </main>
-    );
-  }
-
-  return (
-    <main className="bg-gray-50 flex flex-col max-h-[85vh] min-h-0">
-      <header className="flex justify-between items-center px-4 py-2 border-b bg-white">
-        <h1 className="text-lg font-semibold text-gray-900">Chinese vocabulary chat</h1>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => handleNew("")}
-            className="px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded"
-          >
-            New conversation
-          </button>
+      <main className="bg-gray-50 flex flex-col max-h-[85vh] min-h-0">
+        <header className="flex justify-between items-center px-4 py-2 border-b bg-white">
+          <h1 className="text-lg font-semibold text-gray-900">Chinese vocabulary chat</h1>
           <div className="relative">
             <button
               type="button"
@@ -110,15 +95,46 @@ export default function Home() {
               onClose={() => setSettingsOpen(false)}
             />
           </div>
+        </header>
+        <div className="flex-1 min-h-0 overflow-auto">
+          <EntryScreen onNew={handleNew} onContinue={handleContinue} />
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="bg-gray-50 flex flex-col max-h-[85vh] min-h-0">
+      <header className="flex justify-between items-center px-4 py-2 border-b bg-white">
+        <h1 className="text-lg font-semibold text-gray-900">Chinese vocabulary chat</h1>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setSettingsOpen((o) => !o)}
+            className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded"
+          >
+            Settings
+          </button>
+          <SettingsMenu
+            newWordsPerConversation={newWordsPerConversation}
+            onNewWordsChange={handleNewWordsChange}
+            debugMode={debugMode}
+            onDebugChange={handleDebugChange}
+            open={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+          />
         </div>
       </header>
-      <ChatView
-        initialMessages={initialMessages}
-        conversationId={conversationId}
-        newWordsPerConversation={newWordsPerConversation}
-        topic={topic || undefined}
-        debugMode={debugMode}
-      />
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+        <ChatView
+          initialMessages={initialMessages}
+          conversationId={conversationId}
+          newWordsPerConversation={newWordsPerConversation}
+          topic={topic || undefined}
+          debugMode={debugMode}
+          onNewConversation={() => handleNew("")}
+        />
+      </div>
     </main>
   );
 }

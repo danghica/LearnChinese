@@ -26,6 +26,7 @@ type Props = {
   newWordsPerConversation: number;
   topic?: string;
   debugMode?: boolean;
+  onNewConversation?: () => void;
 };
 
 export default function ChatView({
@@ -34,6 +35,7 @@ export default function ChatView({
   newWordsPerConversation,
   topic,
   debugMode = false,
+  onNewConversation,
 }: Props) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [convId, setConvId] = useState<string | null>(conversationId);
@@ -128,8 +130,19 @@ export default function ChatView({
   }, [wordLookup]);
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 max-w-3xl mx-auto">
+    <div className="flex flex-col flex-1 min-h-0 max-w-3xl mx-auto w-full">
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-1">
+        {onNewConversation && (
+          <div className="mb-2">
+            <button
+              type="button"
+              onClick={onNewConversation}
+              className="text-sm text-blue-600 hover:bg-blue-50 px-2 py-1 rounded"
+            >
+              New conversation
+            </button>
+          </div>
+        )}
         {messages.length === 0 && !loading && (
           <div className="flex justify-center py-6">
             <button
@@ -205,6 +218,15 @@ export default function ChatView({
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (input.trim() && !loading) {
+                  const form = e.currentTarget.form;
+                  if (form) form.requestSubmit();
+                }
+              }
+            }}
             placeholder="Type your message..."
             rows={2}
             className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring focus:ring-blue-200 focus:border-blue-500 resize-none"
