@@ -51,6 +51,23 @@ export function parseMisusedWords(content: string): string[] {
 }
 
 /**
+ * Parse LLM reply for yes/no (correctness question).
+ * Returns true for "yes", false for "no" or unparseable (treat unparseable as no).
+ * Tolerates "Yes.", "yes", "YES", "No."; accepts if reply starts with yes/no unambiguously.
+ */
+export function parseYesNo(content: string): boolean {
+  const trimmed = content.trim();
+  const wholeMatch = trimmed.match(/^\s*(yes|no)\s*[.!]?\s*$/i);
+  if (wholeMatch) return wholeMatch[1].toLowerCase() === "yes";
+  const firstWord = trimmed.split(/\s+/)[0]?.toLowerCase();
+  if (firstWord === "yes") return true;
+  if (firstWord === "no") return false;
+  if (/^yes\b/i.test(trimmed)) return true;
+  if (/^no\b/i.test(trimmed)) return false;
+  return false;
+}
+
+/**
  * Strip the trailing JSON block from content so we show only the natural language part.
  */
 export function stripMisusedJson(content: string): string {
