@@ -23,7 +23,7 @@ function getStoredDebugMode(): boolean {
 export default function Home() {
   const [newWordsPerConversation, setNewWordsPerConversation] = useState(DEFAULT_NEW_WORDS);
   const [debugMode, setDebugMode] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     setNewWordsPerConversation(getStoredNewWords());

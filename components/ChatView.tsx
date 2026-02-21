@@ -47,6 +47,10 @@ export default function ChatView({
   const debugPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Only sync from props when parent is passing loaded conversation data (e.g. "Continue").
+    // When parent passes [] and null (default), do not overwrite local state—avoids reset on re-render (e.g. opening/closing Settings).
+    const hasLoadedConversation = initialMessages.length > 0 || conversationId !== null;
+    if (!hasLoadedConversation) return;
     setMessages(initialMessages);
     setConvId(conversationId);
     setLookupNote(null);
