@@ -14,4 +14,4 @@ This folder documents the current implementation of the app. It is generated fro
 
 ## Overview
 
-Single-user web app to practice Chinese with vocabulary-based conversations. The LLM (Groq) responds in Chinese using a selected vocabulary computed from a spaced-frequency algorithm over a 3000-word database (SUBTLEX-CH + CEDICT).
+Single-user web app to practice Chinese with vocabulary-based conversations. The LLM (Groq) responds in Chinese using a selected vocabulary computed from a spaced-frequency algorithm over a 3000-word database (SUBTLEX-CH + CEDICT). Users can view the current working vocabulary via Settings → "Show current vocabulary" (opens /vocabulary in a new tab; debug off = comma-separated list, debug on = full DB info per word).
