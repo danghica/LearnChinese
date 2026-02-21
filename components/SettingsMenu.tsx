@@ -46,14 +46,22 @@ export default function SettingsMenu({
         />
         Debug mode (show LLM traffic)
       </label>
-      <div className="mt-3 pt-3 border-t border-gray-200">
+      <div className="mt-3 pt-3 border-t border-gray-200 space-y-1">
         <a
           href={`/vocabulary?newWordsPerConversation=${newWordsPerConversation}&debug=${debugMode}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sm text-blue-600 hover:underline"
+          className="block text-sm text-blue-600 hover:underline"
         >
           Show current vocabulary
+        </a>
+        <a
+          href="/words"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block text-sm text-blue-600 hover:underline"
+        >
+          Inspect word database
         </a>
       </div>
     </div>
