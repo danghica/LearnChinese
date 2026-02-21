@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import { pinyinToDiacritic } from "@/lib/pinyin";
 
 const PAGE_SIZE = 100;
 
@@ -138,7 +139,7 @@ function WordsContent() {
                       <td className="py-2 px-3">{row.score}</td>
                       <td className="py-2 px-3 font-medium">{row.word}</td>
                       <td className="py-2 px-3">{row.frequency}</td>
-                      <td className="py-2 px-3">{row.pinyin}</td>
+                      <td className="py-2 px-3">{pinyinToDiacritic(row.pinyin)}</td>
                       <td className="py-2 px-3">{row.english_translation}</td>
                       <td className="py-2 px-3">
                         <button

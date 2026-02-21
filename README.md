@@ -21,6 +21,7 @@ Single-user web app to practice Chinese with vocabulary-based conversations. The
 ## Data
 
 - **Seed file:** `data/words-3000.json` — array of `{ word, frequency, pinyin, english_translation }`. Frequency is rank (1 = most frequent). Replace with a full 3000-word list (e.g. CEDICT + SUBTLEX) for production.
+- **CEDICT lookup:** `data/cedict-lookup.json` — optional `{ [word]: { pinyin, english_translation } }` for adding words on click. A minimal set is included; for full dictionary run `npm run build-cedict` (downloads CC-CEDICT and rebuilds the file).
 - **Database:** SQLite at `data/app.sqlite` (or path in `DATABASE_URL`).
 
 ## Deploy (non-local)
@@ -57,4 +58,4 @@ The app uses **SQLite** and **native modules** (better-sqlite3, @node-rs/jieba),
 - **New / Continue:** Entry screen; new prompts for optional topic (English), then chat. Continue loads the current (most recent) conversation.
 - **Settings:** “New words per conversation” (default 10) stored in localStorage.
 - **Vocabulary:** Union of top 250 by spaced-frequency score and top 10 (or setting) most frequent words with no usage history.
-- **Clickable words:** Assistant messages are segmented (jieba); click a word to see pinyin and English and record unsuccessful use. If the word is not in the DB, “Not in vocabulary” is shown and no usage is recorded.
+- **Clickable words:** Assistant messages are segmented (jieba); click a word to see pinyin and English and record unsuccessful use. If the word is not in the DB, “Not in vocabulary” is shown and no usage is recorded. (Unknown words are looked up in `data/cedict-lookup.json` and added if found.)

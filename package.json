@@ -10,7 +10,8 @@
     "seed": "tsx scripts/seed-words.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "generate-words": "node scripts/generate-words-3000.cjs"
+    "generate-words": "node scripts/generate-words-3000.cjs",
+    "build-cedict": "node scripts/build-cedict-json.mjs"
   },
   "dependencies": {
     "@node-rs/jieba": "^2.0.0",

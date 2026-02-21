@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
+import { pinyinToDiacritic } from "@/lib/pinyin";
 
 type WordDetail = {
   id: number;
@@ -87,7 +88,7 @@ function VocabularyContent() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
                 <div><span className="font-medium text-gray-500">word:</span> {item.word}</div>
                 <div><span className="font-medium text-gray-500">frequency:</span> {item.frequency}</div>
-                <div><span className="font-medium text-gray-500">pinyin:</span> {item.pinyin}</div>
+                <div><span className="font-medium text-gray-500">pinyin:</span> {pinyinToDiacritic(item.pinyin)}</div>
                 <div><span className="font-medium text-gray-500">english_translation:</span> {item.english_translation}</div>
                 {item.created_at != null && (
                   <div className="sm:col-span-2"><span className="font-medium text-gray-500">created_at:</span> {item.created_at}</div>

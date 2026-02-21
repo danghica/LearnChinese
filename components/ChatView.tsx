@@ -157,10 +157,27 @@ export default function ChatView({
       return;
     }
     try {
-      const res = await fetch(`/api/words?word=${encodeURIComponent(word)}`);
+      let res = await fetch(`/api/words?word=${encodeURIComponent(word)}`);
       if (res.status === 404) {
-        setLookupNote({ word, pinyin: "", english_translation: "Not in vocabulary" });
-        return;
+        setLookupNote({ word, pinyin: "", english_translation: "Looking up…" });
+        const addRes = await fetch("/api/words", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ word }),
+        });
+        if (addRes.status !== 200 && addRes.status !== 201) {
+          let errorText = "Not in vocabulary";
+          try {
+            const errBody = await addRes.clone().json();
+            if (errBody?.details) errorText = errBody.details;
+            else if (errBody?.error) errorText = errBody.error;
+          } catch {
+            // use default
+          }
+          setLookupNote({ word, pinyin: "", english_translation: errorText });
+          return;
+        }
+        res = addRes;
       }
       const data = await res.json();
       const info = { pinyin: data.pinyin, english_translation: data.english_translation };
@@ -274,6 +291,20 @@ export default function ChatView({
                       {JSON.stringify(entry.response.body, null, 2)}
                     </pre>
                   </div>
+                  {entry.response.status === 200 &&
+                    Array.isArray((entry.response.body as { usage_recorded?: unknown })?.usage_recorded) && (
+                      <div>
+                        <span className="text-amber-400">Word DB updates:</span>
+                        <p className="mt-0.5 text-gray-300">
+                          {(entry.response.body as { usage_recorded: { word: string; correct: boolean }[] })
+                            .usage_recorded.length === 0
+                            ? "No usage recorded this turn."
+                            : `${(entry.response.body as { usage_recorded: { word: string; correct: boolean }[] }).usage_recorded.length} usage record(s): ${(entry.response.body as { usage_recorded: { word: string; correct: boolean }[] })
+                                .usage_recorded.map((u) => `${u.word} (${u.correct ? "correct" : "incorrect"})`)
+                                .join(", ")}`}
+                        </p>
+                      </div>
+                    )}
                 </div>
               </details>
             ))}

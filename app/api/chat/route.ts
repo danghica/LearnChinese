@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
       topN: 250,
       newK: typeof newWordsPerConversation === "number" ? newWordsPerConversation : 10,
     });
+    const usageRecorded: { word: string; correct: boolean }[] = [];
     let conversationId: number;
     let isNew = false;
     const convId = rawConvId ? parseInt(String(rawConvId), 10) : null;
@@ -94,7 +95,9 @@ export async function POST(request: NextRequest) {
         if (!w.trim()) continue;
         const wordRow = getWordByWord(w);
         if (!wordRow || !vocabSet.has(w)) continue;
-        recordUsage(wordRow.id, !misusedSet.has(w));
+        const correct = !misusedSet.has(w);
+        recordUsage(wordRow.id, correct);
+        usageRecorded.push({ word: wordRow.word, correct });
       }
     }
     const segments = segment(displayContent);
@@ -103,6 +106,7 @@ export async function POST(request: NextRequest) {
       conversationId: String(conversationId),
       messageId: String(messageId),
       segments: segments.map((word) => ({ word })),
+      usage_recorded: usageRecorded,
       ...(misused.length > 0 ? { misused_words: misused } : {}),
     });
   } catch (e) {

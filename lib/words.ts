@@ -38,3 +38,26 @@ export function getWordsWithUsage(): { word: Word; usage: UsageEntry[] }[] {
     return { word, usage };
   });
 }
+
+export function getMaxFrequency(): number {
+  const db = getDatabase();
+  const row = db.prepare("SELECT COALESCE(MAX(frequency), 0) AS max FROM words").get() as { max: number };
+  return row.max;
+}
+
+export function insertWord(
+  word: string,
+  pinyin: string,
+  english_translation: string,
+  frequency: number
+): Word {
+  const db = getDatabase();
+  const result = db
+    .prepare(
+      "INSERT INTO words (word, frequency, pinyin, english_translation) VALUES (?, ?, ?, ?)"
+    )
+    .run(word, frequency, pinyin, english_translation);
+  const id = result.lastInsertRowid as number;
+  const row = db.prepare("SELECT id, word, frequency, pinyin, english_translation, created_at FROM words WHERE id = ?").get(id) as Word;
+  return row;
+}
