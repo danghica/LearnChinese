@@ -6,25 +6,32 @@ import { segment } from "@/lib/segment";
 import { getWordByWord } from "@/lib/words";
 import { recordUsage } from "@/lib/words";
 
+// Role only; vocabulary instruction is in vocabBlock + VOCAB_HSK2_INSTRUCTION below.
 const STANDING_PROMPT =
-  "You are a teacher teaching Chinese to an English speaker. Be supportive and pedagogical. Use only the vocabulary words provided.";
+  "You are a teacher teaching Chinese to an English speaker. Be supportive and pedagogical.";
 
-const HSK2_INSTRUCTION = " You may also use any HSK2 vocabulary.";
+// Explicit plan instruction: respond in Chinese using this vocabulary AND all HSK2 words.
+const VOCAB_HSK2_INSTRUCTION =
+  "Respond to the next prompt in Chinese using words in this vocabulary (include vocabulary computed as before) and all HSK2 words.";
 
 function buildAcknowledgeSystemPrompt(vocabList: string[]): string {
-  const vocabBlock = vocabList.length ? `Use ONLY these Chinese words in your responses: ${vocabList.join(", ")}.` : "";
-  return `${STANDING_PROMPT}\n\n${vocabBlock}${HSK2_INSTRUCTION}\n\nRespond to the next prompt in Chinese using words in this vocabulary and all HSK2 words.`;
+  const vocabBlock = vocabList.length
+    ? `Vocabulary to use: ${vocabList.join(", ")}. You may also use any HSK2 vocabulary.`
+    : "You may use any HSK2 vocabulary.";
+  return `${STANDING_PROMPT}\n\n${vocabBlock}\n\n${VOCAB_HSK2_INSTRUCTION}`;
 }
 
 function buildSystemPrompt(vocabList: string[], topic: string | null, isNew: boolean): string {
-  const vocabBlock = vocabList.length ? `Use ONLY these Chinese words in your responses: ${vocabList.join(", ")}.` : "";
+  const vocabBlock = vocabList.length
+    ? `Vocabulary to use: ${vocabList.join(", ")}. You may also use any HSK2 vocabulary.`
+    : "You may use any HSK2 vocabulary.";
   if (isNew) {
     const topicPart = topic && topic.trim()
       ? `The user has requested a topic or theme (in English): "${topic}".`
       : "The user did not specify a topic; use a general conversation theme.";
-    return `${STANDING_PROMPT}\n\n${topicPart}\n\n${vocabBlock}${HSK2_INSTRUCTION}\n\nYou MUST reply with your first message in Chinese. Greet the user and start the conversation (e.g. introduce the topic and ask a first question). Respond in Chinese only.`;
+    return `${STANDING_PROMPT}\n\n${vocabBlock}\n\n${topicPart}\n\n${VOCAB_HSK2_INSTRUCTION}\n\nYou MUST reply with your first message in Chinese. Greet the user and start the conversation (e.g. introduce the topic and ask a first question). Respond in Chinese only.`;
   }
-  return `${STANDING_PROMPT}\n\nYou are continuing a conversation. For each user message you must do TWO things in order:\n\n1. First, evaluate the user's answer for correctness. Output this evaluation clearly (e.g. whether their answer is correct or incorrect, what was wrong or what was good, brief feedback).\n\n2. Then, respond conversationally in Chinese: continue the dialogue, ask a follow-up question, or give encouragement, using ONLY the vocabulary words listed below.\n\nWhen you correct the user's answer, at the END of your message add a JSON block on a new line with the list of Chinese words they used incorrectly, e.g.:\n{"misused_words": ["词1", "词2"]}\nIf no words were misused, use: {"misused_words": []}\n\n${vocabBlock}${HSK2_INSTRUCTION}\n\nRespond in Chinese.`;
+  return `${STANDING_PROMPT}\n\nYou are continuing a conversation. For each user message you must do TWO things in order:\n\n1. First, evaluate the user's answer for correctness. Output this evaluation clearly (e.g. whether their answer is correct or incorrect, what was wrong or what was good, brief feedback).\n\n2. Then, respond conversationally in Chinese: continue the dialogue, ask a follow-up question, or give encouragement. Use the vocabulary list below and any HSK2 vocabulary.\n\nWhen you correct the user's answer, at the END of your message add a JSON block on a new line with the list of Chinese words they used incorrectly, e.g.:\n{"misused_words": ["词1", "词2"]}\nIf no words were misused, use: {"misused_words": []}\n\n${vocabBlock}\n\nRespond in Chinese.`;
 }
 
 export async function POST(request: NextRequest) {
@@ -35,12 +42,16 @@ export async function POST(request: NextRequest) {
       conversationId: rawConvId,
       newWordsPerConversation = 10,
       topic: topicParam,
+      debug: debugMode = false,
     } = body as {
       messages?: { role: string; content: string }[];
       conversationId?: string | null;
       newWordsPerConversation?: number;
       topic?: string | null;
+      debug?: boolean;
     };
+    type LlmCall = { sent: { role: string; content: string }[]; received: string };
+    const llmCalls: LlmCall[] = [];
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: "messages array required" }, { status: 400 });
     }
@@ -61,11 +72,13 @@ export async function POST(request: NextRequest) {
       // New conversation: acknowledge then first reply (two LLM calls). No DB until after call 1.
       const acknowledgeSystem = buildAcknowledgeSystemPrompt(vocabList);
       const acknowledgeUser =
-        "Respond to the next prompt in Chinese using words in this vocabulary and all HSK2 words. Acknowledge by replying with exactly: Acknowledged.";
-      await chat([
-        { role: "system", content: acknowledgeSystem },
-        { role: "user", content: acknowledgeUser },
-      ]);
+        "Respond to the next prompt in Chinese using words in this vocabulary (include vocabulary computed as before) and all HSK2 words. Acknowledge by replying with exactly: Acknowledged.";
+      const ackMessages = [
+        { role: "system" as const, content: acknowledgeSystem },
+        { role: "user" as const, content: acknowledgeUser },
+      ];
+      const ackReceived = await chat(ackMessages);
+      if (debugMode) llmCalls.push({ sent: ackMessages, received: ackReceived });
       // Proceed to call 2 even if acknowledgment was not exact (per plan: do not block).
       const conversationId = createConversation(topicParam ?? "general conversation");
       const topic = topicParam ?? "general conversation";
@@ -75,10 +88,12 @@ export async function POST(request: NextRequest) {
       const promptForLlm = isPlaceholder ? "discuss a random topic" : firstContent;
       const storedUserContent = firstContent.length > 0 ? firstContent : lastMessage.content || "";
       const systemPrompt = buildSystemPrompt(vocabList, topic, true);
-      const rawContent = await chat([
-        { role: "system", content: systemPrompt },
-        { role: "user", content: promptForLlm },
-      ]);
+      const firstReplyMessages = [
+        { role: "system" as const, content: systemPrompt },
+        { role: "user" as const, content: promptForLlm },
+      ];
+      const rawContent = await chat(firstReplyMessages);
+      if (debugMode) llmCalls.push({ sent: firstReplyMessages, received: rawContent });
       const displayContent = stripMisusedJson(rawContent);
       appendMessage(conversationId, "user", storedUserContent);
       const messageId = appendMessage(conversationId, "assistant", displayContent);
@@ -89,6 +104,7 @@ export async function POST(request: NextRequest) {
         messageId: String(messageId),
         segments: segments.map((word) => ({ word })),
         usage_recorded: usageRecorded,
+        ...(debugMode && llmCalls.length > 0 ? { llm_calls: llmCalls } : {}),
       });
     }
 
@@ -108,10 +124,12 @@ export async function POST(request: NextRequest) {
       const recent = messages.slice(-6);
       const contextLines = recent.map((m: { role: string; content: string }) => `[${m.role}]: ${m.content}`).join("\n");
       const correctnessPrompt = `Conversation:\n${contextLines}\n\nis the following sentence correct and meaningful in the context of the conversation? answer just yes or no: ${lastMessage.content}`;
-      const correctnessReply = await chat([
-        { role: "system", content: "Answer only yes or no." },
-        { role: "user", content: correctnessPrompt },
-      ]);
+      const correctnessMessages = [
+        { role: "system" as const, content: "Answer only yes or no." },
+        { role: "user" as const, content: correctnessPrompt },
+      ];
+      const correctnessReply = await chat(correctnessMessages);
+      if (debugMode) llmCalls.push({ sent: correctnessMessages, received: correctnessReply });
       const isCorrect = parseYesNo(correctnessReply);
       if (isCorrect) {
         recordedAllCorrect = true;
@@ -136,6 +154,7 @@ export async function POST(request: NextRequest) {
       ...userMessages,
     ];
     const rawContent = await chat(apiMessages);
+    if (debugMode) llmCalls.push({ sent: apiMessages, received: rawContent });
     const misused = parseMisusedWords(rawContent);
     const displayContent = stripMisusedJson(rawContent);
     appendMessage(conversationId, "user", lastMessage.content);
@@ -164,6 +183,7 @@ export async function POST(request: NextRequest) {
       segments: segments.map((word) => ({ word })),
       usage_recorded: usageRecorded,
       ...(misused.length > 0 ? { misused_words: misused } : {}),
+      ...(debugMode && llmCalls.length > 0 ? { llm_calls: llmCalls } : {}),
     });
   } catch (e) {
     console.error(e);

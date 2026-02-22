@@ -64,7 +64,7 @@ export default function ChatView({
   }, []);
 
   const sendRequest = useCallback(
-    async (requestBody: { messages: { role: string; content: string }[]; conversationId: string | null; newWordsPerConversation: number; topic?: string }) => {
+    async (requestBody: { messages: { role: string; content: string }[]; conversationId: string | null; newWordsPerConversation: number; topic?: string; debug?: boolean }) => {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -91,6 +91,7 @@ export default function ChatView({
       conversationId: null,
       newWordsPerConversation,
       topic: text ? text : undefined,
+      debug: debugMode,
     };
     try {
       const data = await sendRequest(body);
@@ -130,6 +131,7 @@ export default function ChatView({
         conversationId: convId,
         newWordsPerConversation,
         topic,
+        debug: debugMode,
       };
       try {
         const data = await sendRequest(body);
@@ -198,6 +200,17 @@ export default function ChatView({
     <div className="flex flex-col flex-1 min-h-0 max-w-3xl mx-auto w-full">
       {/* Output text box: read-only area showing assistant (and optionally thread) output */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-1 min-h-0">
+        {messages.length === 0 && !loading && (
+          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 text-sm text-gray-700 space-y-2">
+            <p className="font-medium text-blue-900">How it works</p>
+            <ul className="list-disc list-inside space-y-1 text-gray-600">
+              <li>Click <strong>Next chat</strong> to start (you can type a topic above first, or leave it blank for a random topic).</li>
+              <li>The assistant will reply in Chinese using <strong>your practice vocabulary and HSK2 words</strong>.</li>
+              <li><strong>Send</strong> is enabled only after a conversation has started; use it for follow-up replies.</li>
+              <li>Your sentences are checked for correctness; correct word use is recorded for practice.</li>
+            </ul>
+          </div>
+        )}
         {messages.map((m) => (
           <div key={m.id}>
             <MessageBlock
@@ -266,50 +279,55 @@ export default function ChatView({
       {debugMode && (
         <div
           ref={debugPanelRef}
-          className="border-t border-gray-300 bg-gray-900 text-gray-100 flex flex-col min-h-0 max-h-[220px] shrink-0"
+          className="border-t border-gray-300 bg-gray-900 text-gray-100 flex flex-col min-h-0 max-h-[320px] shrink-0"
         >
           <div className="px-3 py-1.5 text-xs font-medium text-gray-400 border-b border-gray-700 shrink-0">
-            LLM traffic (POST /api/chat)
+            LLM interaction (plain text)
           </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-2 text-xs font-mono">
+          <div className="flex-1 overflow-y-auto p-2 space-y-3 text-xs font-mono whitespace-pre-wrap break-words">
             {trafficLog.length === 0 && (
               <p className="text-gray-500">No requests yet. Send a message or click Next chat.</p>
             )}
-            {trafficLog.map((entry) => (
-              <details key={entry.id} className="bg-gray-800 rounded p-2">
-                <summary className="cursor-pointer text-gray-300">
-                  {entry.timestamp} — {entry.request.method} {entry.request.url} → {entry.response.status}
-                </summary>
-                <div className="mt-2 space-y-2 text-gray-400">
-                  <div>
-                    <span className="text-amber-400">Request body:</span>
-                    <pre className="mt-0.5 whitespace-pre-wrap break-all overflow-x-auto">
-                      {JSON.stringify(entry.request.body, null, 2)}
-                    </pre>
-                  </div>
-                  <div>
-                    <span className="text-amber-400">Response ({entry.response.status}):</span>
-                    <pre className="mt-0.5 whitespace-pre-wrap break-all overflow-x-auto">
-                      {JSON.stringify(entry.response.body, null, 2)}
-                    </pre>
-                  </div>
-                  {entry.response.status === 200 &&
-                    Array.isArray((entry.response.body as { usage_recorded?: unknown })?.usage_recorded) && (
-                      <div>
-                        <span className="text-amber-400">Word DB updates:</span>
-                        <p className="mt-0.5 text-gray-300">
-                          {(entry.response.body as { usage_recorded: { word: string; correct: boolean }[] })
-                            .usage_recorded.length === 0
-                            ? "No usage recorded this turn."
-                            : `${(entry.response.body as { usage_recorded: { word: string; correct: boolean }[] }).usage_recorded.length} usage record(s): ${(entry.response.body as { usage_recorded: { word: string; correct: boolean }[] })
-                                .usage_recorded.map((u) => `${u.word} (${u.correct ? "correct" : "incorrect"})`)
-                                .join(", ")}`}
-                        </p>
-                      </div>
+            {trafficLog.map((entry) => {
+              const resBody = entry.response.body as { llm_calls?: { sent: { role: string; content: string }[]; received: string }[] };
+              const calls = resBody?.llm_calls;
+              return (
+                <details key={entry.id} className="bg-gray-800 rounded p-2" open={!!calls?.length}>
+                  <summary className="cursor-pointer text-gray-300">
+                    {entry.timestamp} — {entry.request.method} {entry.request.url} → {entry.response.status}
+                    {Array.isArray(calls) && calls.length > 0 && ` (${calls.length} LLM call${calls.length !== 1 ? "s" : ""})`}
+                  </summary>
+                  <div className="mt-2 space-y-4 text-gray-300">
+                    {Array.isArray(calls) && calls.length > 0 ? (
+                      calls.map((call, i) => (
+                        <div key={i} className="border border-gray-600 rounded p-2 space-y-2">
+                          <div className="text-amber-400 font-medium">——— LLM call {i + 1} ———</div>
+                          <div>
+                            <div className="text-amber-400/80 mb-1">Sent:</div>
+                            {call.sent.map((m, j) => (
+                              <div key={j} className="mb-2">
+                                <span className="text-gray-500">[{m.role}]</span>
+                                <span className="text-gray-400">{"\n"}{m.content}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div>
+                            <div className="text-amber-400/80 mb-1">Received:</div>
+                            <div className="text-gray-400">{call.received || "(empty)"}</div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-gray-500">
+                        {entry.response.status !== 200
+                          ? `Error ${entry.response.status}; response: ${JSON.stringify(resBody)}`
+                          : "No LLM call details in response."}
+                      </p>
                     )}
-                </div>
-              </details>
-            ))}
+                  </div>
+                </details>
+              );
+            })}
           </div>
         </div>
       )}
