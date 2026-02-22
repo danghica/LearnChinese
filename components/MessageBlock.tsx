@@ -35,6 +35,15 @@ function segmentAtOffset(segments: string[], offset: number): string | null {
   return null;
 }
 
+/**
+ * Normalize markdown from the LLM so remark can parse it. The model often emits malformed bold:
+ * - Runs of 3+ asterisks (e.g. ****) are left literal by remark; collapse to ** so pairs can form.
+ * - Orphan ** (unpaired) will still appear literal; this at least fixes the "four asterisks" case.
+ */
+function normalizeMarkdownForRender(text: string): string {
+  return text.replace(/\*{3,}/g, "**");
+}
+
 export default function MessageBlock({ role, content, segments, wordLookup, onWordClick }: Props) {
   const isUser = role === "user";
   const containerRef = useRef<HTMLDivElement>(null);
@@ -73,6 +82,7 @@ export default function MessageBlock({ role, content, segments, wordLookup, onWo
       return <span className="whitespace-pre-wrap break-words">{content}</span>;
     }
     // Assistant: render markdown with typography, optional word-click overlay
+    const normalizedContent = normalizeMarkdownForRender(content);
     const markdown = (
       <ReactMarkdown
         components={{
@@ -93,7 +103,7 @@ export default function MessageBlock({ role, content, segments, wordLookup, onWo
           ),
         }}
       >
-        {content}
+        {normalizedContent}
       </ReactMarkdown>
     );
     return (

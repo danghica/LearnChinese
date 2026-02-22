@@ -27,11 +27,20 @@ function buildSystemPrompt(vocabList: string[], topic: string | null, isNew: boo
     : "You may use any HSK2 vocabulary.";
   if (isNew) {
     const topicPart = topic && topic.trim()
-      ? `The user has requested a topic or theme (in English): "${topic}".`
+      ? `The user has requested a topic or theme (in English or Chinese): "${topic}".`
       : "The user did not specify a topic; use a general conversation theme.";
     return `${STANDING_PROMPT}\n\n${vocabBlock}\n\n${topicPart}\n\n${VOCAB_HSK2_INSTRUCTION}\n\nYou MUST reply with your first message in Chinese. Greet the user and start the conversation (e.g. introduce the topic and ask a first question). Respond in Chinese only.`;
   }
-  return `${STANDING_PROMPT}\n\nYou are continuing a conversation. For each user message you must do TWO things in order:\n\n1. First, evaluate the user's answer for correctness. Output this evaluation clearly using English (e.g. whether their answer is correct or incorrect, what was wrong or what was good, brief feedback).\n\n2. Then, respond conversationally in Chinese: continue the dialogue, ask a follow-up question, or give encouragement. Use the vocabulary list below and any HSK2 vocabulary.\n\nWhen you correct the user's answer, at the END of your message add a JSON block on a new line with the list of Chinese words they used incorrectly, e.g.:\n{"misused_words": ["词1", "词2"]}\nIf no words were misused, use: {"misused_words": []}\n\n${vocabBlock}\n\nRespond in Chinese.`;
+  return (
+    `${STANDING_PROMPT}\n\nYou are continuing a conversation. For each user message you must do TWO things in order:\n\n` +
+    `1. First, evaluate the user's answer for correctness. Output this evaluation clearly using English ` +
+    `(e.g. whether their answer is correct or incorrect, what was wrong or what was good, brief feedback).\n\n` +
+    `2. Then, respond conversationally in Chinese: continue the dialogue, ask a follow-up question, or test comprehension of what was said so far. ` +
+    `Use the vocabulary list below and any HSK2 vocabulary.\n\n` +
+    `When you correct the user's answer, at the END of your message add a JSON block on a new line with the list of Chinese words they used incorrectly, e.g.:\n` +
+    `{"misused_words": ["词1", "词2"]}\nIf no words were misused, use: {"misused_words": []}\n\n` +
+    `${vocabBlock}\n\nRespond in Chinese.`
+  );
 }
 
 export async function POST(request: NextRequest) {
