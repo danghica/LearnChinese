@@ -1,5 +1,6 @@
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const DEFAULT_MODEL = "llama-3.3-70b-versatile";
+/** Use Compound for built-in web search (same endpoint; model enables tools). */
+const DEFAULT_MODEL = "groq/compound-mini";
 
 export type ChatMessage = { role: "user" | "assistant" | "system"; content: string };
 
