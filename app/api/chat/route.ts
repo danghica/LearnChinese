@@ -72,6 +72,7 @@ export async function POST(request: NextRequest) {
       topN: 250,
       newK: typeof newWordsPerConversation === "number" ? newWordsPerConversation : 10,
     });
+    const vocabSet = new Set(vocabList);
     const usageRecorded: { word: string; correct: boolean }[] = [];
     const convId = rawConvId ? parseInt(String(rawConvId), 10) : null;
     const existingConv = convId != null && !Number.isNaN(convId) ? getConversationById(convId) : null;
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest) {
         content: plainContent,
         conversationId: String(conversationId),
         messageId: String(messageId),
-        segments: segments.map((word) => ({ word })),
+        segments: segments.map((word) => ({ word, inVocabulary: vocabSet.has(word) })),
         usage_recorded: usageRecorded,
         ...(debugMode && llmCalls.length > 0 ? { llm_calls: llmCalls } : {}),
       });
@@ -174,7 +175,6 @@ export async function POST(request: NextRequest) {
     if (messages.length >= 2 && !recordedAllCorrect) {
       const lastUserContent = lastMessage.content;
       const userWords = segment(lastUserContent);
-      const vocabSet = new Set(vocabList);
       const misusedSet = new Set(misused);
       for (const w of userWords) {
         if (!w.trim()) continue;
@@ -191,7 +191,7 @@ export async function POST(request: NextRequest) {
       content: plainContent,
       conversationId: String(conversationId),
       messageId: String(messageId),
-      segments: segments.map((word) => ({ word })),
+      segments: segments.map((word) => ({ word, inVocabulary: vocabSet.has(word) })),
       usage_recorded: usageRecorded,
       ...(misused.length > 0 ? { misused_words: misused } : {}),
       ...(debugMode && llmCalls.length > 0 ? { llm_calls: llmCalls } : {}),

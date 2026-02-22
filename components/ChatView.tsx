@@ -4,11 +4,13 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import MessageBlock from "./MessageBlock";
 import WordLookupNote from "./WordLookupNote";
 
+export type SegmentItem = { word: string; inVocabulary?: boolean };
+
 export type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
-  segments?: string[];
+  segments?: string[] | SegmentItem[];
 };
 
 export type TrafficLogEntry = {
@@ -101,7 +103,7 @@ export default function ChatView({
         id: data.messageId,
         role: "assistant",
         content: data.content,
-        segments: data.segments?.map((s: { word: string }) => s.word) ?? undefined,
+        segments: data.segments?.map((s: { word: string; inVocabulary?: boolean }) => ({ word: s.word, inVocabulary: s.inVocabulary })) ?? undefined,
       };
       setMessages([
         { id: crypto.randomUUID(), role: "user", content: userContent },
@@ -140,7 +142,7 @@ export default function ChatView({
           id: data.messageId,
           role: "assistant",
           content: data.content,
-          segments: data.segments?.map((s: { word: string }) => s.word) ?? undefined,
+          segments: data.segments?.map((s: { word: string; inVocabulary?: boolean }) => ({ word: s.word, inVocabulary: s.inVocabulary })) ?? undefined,
         };
         setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", content: text }, assistantMsg]);
         if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
