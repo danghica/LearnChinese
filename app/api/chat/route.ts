@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSelectedVocabulary } from "@/lib/vocabulary";
 import { createConversation, appendMessage, getConversationById } from "@/lib/conversations";
-import { chat, parseMisusedWords, parseYesNo, stripMisusedJson } from "@/lib/llm";
+import { chat, parseMisusedWords, parseYesNo, stripMisusedJson, stripMarkdown } from "@/lib/llm";
 import { segment } from "@/lib/segment";
 import { getWordByWord } from "@/lib/words";
 import { recordUsage } from "@/lib/words";
@@ -104,11 +104,12 @@ export async function POST(request: NextRequest) {
       const rawContent = await chat(firstReplyMessages);
       if (debugMode) llmCalls.push({ sent: firstReplyMessages, received: rawContent });
       const displayContent = stripMisusedJson(rawContent);
+      const plainContent = stripMarkdown(displayContent);
       appendMessage(conversationId, "user", storedUserContent);
-      const messageId = appendMessage(conversationId, "assistant", displayContent);
-      const segments = segment(displayContent);
+      const messageId = appendMessage(conversationId, "assistant", plainContent);
+      const segments = segment(plainContent);
       return NextResponse.json({
-        content: displayContent,
+        content: plainContent,
         conversationId: String(conversationId),
         messageId: String(messageId),
         segments: segments.map((word) => ({ word })),
@@ -166,8 +167,9 @@ export async function POST(request: NextRequest) {
     if (debugMode) llmCalls.push({ sent: apiMessages, received: rawContent });
     const misused = parseMisusedWords(rawContent);
     const displayContent = stripMisusedJson(rawContent);
+    const plainContent = stripMarkdown(displayContent);
     appendMessage(conversationId, "user", lastMessage.content);
-    const messageId = appendMessage(conversationId, "assistant", displayContent);
+    const messageId = appendMessage(conversationId, "assistant", plainContent);
 
     if (messages.length >= 2 && !recordedAllCorrect) {
       const lastUserContent = lastMessage.content;
@@ -184,9 +186,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const segments = segment(displayContent);
+    const segments = segment(plainContent);
     return NextResponse.json({
-      content: displayContent,
+      content: plainContent,
       conversationId: String(conversationId),
       messageId: String(messageId),
       segments: segments.map((word) => ({ word })),

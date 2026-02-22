@@ -79,3 +79,29 @@ export function stripMisusedJson(content: string): string {
   if (idx === -1) return content.trim();
   return content.slice(0, idx).trim();
 }
+
+/**
+ * Remove markdown formatting from text; return plain text only.
+ * Handles **bold**, *italic*, _underline_, `code`, [links](url), and # headers.
+ */
+export function stripMarkdown(text: string): string {
+  let s = text;
+  // Bold: **inner** or __inner__
+  s = s.replace(/\*\*([^*]*)\*\*/g, "$1");
+  s = s.replace(/__([^_]*)__/g, "$1");
+  // Italic: *inner* or _inner_ (single; avoid matching **/__)
+  s = s.replace(/(?<!\*)\*([^*]*)\*(?!\*)/g, "$1");
+  s = s.replace(/(?<!_)_([^_]*)_(?!_)/g, "$1");
+  // Inline code: `inner`
+  s = s.replace(/`([^`]*)`/g, "$1");
+  // Links: [text](url) -> text
+  s = s.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
+  // Headers: # ## ### at line start
+  s = s.replace(/^#{1,6}\s*/gm, "");
+  // Remove any remaining orphan asterisks/underscores (runs of 2+)
+  s = s.replace(/\*{2,}/g, "");
+  s = s.replace(/_{2,}/g, "");
+  s = s.replace(/\*+/g, "");
+  s = s.replace(/_+/g, "");
+  return s.trim();
+}
