@@ -33,11 +33,11 @@ function main() {
       english_translation TEXT NOT NULL,
       created_at TEXT DEFAULT (datetime('now'))
     );
-    CREATE TABLE IF NOT EXISTS usage_history (
+    DROP TABLE IF EXISTS usage_history;
+    CREATE TABLE usage_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       word_id INTEGER NOT NULL REFERENCES words(id),
-      timestamp TEXT NOT NULL DEFAULT (datetime('now')),
-      correct INTEGER NOT NULL
+      day INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS conversations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,24 +60,14 @@ function main() {
   const insertWord = db.prepare(
     "INSERT INTO words (word, frequency, pinyin, english_translation) VALUES (?, ?, ?, ?)"
   );
-  const insertUsage = db.prepare(
-    "INSERT INTO usage_history (word_id, timestamp, correct) VALUES (?, datetime('now'), 1)"
-  );
   const insertMany = db.transaction((rows: SeedWord[]) => {
     for (const row of rows) {
       insertWord.run(row.word, row.frequency, row.pinyin, row.english_translation);
     }
   });
   insertMany(words);
-  const topForUsage = db.prepare("SELECT id FROM words ORDER BY frequency ASC LIMIT 300").all() as { id: number }[];
-  const usageMany = db.transaction((ids: number[]) => {
-    for (const id of ids) {
-      insertUsage.run(id);
-    }
-  });
-  usageMany(topForUsage.map((r) => r.id));
   db.close();
-  console.log("Seeded", words.length, "words and", topForUsage.length, "initial usage_history rows.");
+  console.log("Seeded", words.length, "words. usage_history is not seeded.");
 }
 
 main();

@@ -21,6 +21,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Word not found" }, { status: 400 });
     }
     const usageId = recordUsage(id, correct);
+    if (usageId == null) {
+      return NextResponse.json({ recorded: false }, { status: 200 });
+    }
     return NextResponse.json({ id: usageId }, { status: 201 });
   } catch (e) {
     console.error(e);

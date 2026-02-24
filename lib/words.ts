@@ -14,13 +14,17 @@ export function getWordByWord(word: string): Word | null {
 
 export function getUsageHistoryForWord(wordId: number): UsageEntry[] {
   const db = getDatabase();
-  const rows = db.prepare("SELECT id, word_id, timestamp, correct FROM usage_history WHERE word_id = ? ORDER BY timestamp DESC").all(wordId) as UsageEntry[];
+  const rows = db.prepare("SELECT id, word_id, day FROM usage_history WHERE word_id = ? ORDER BY day DESC").all(wordId) as UsageEntry[];
   return rows;
 }
 
-export function recordUsage(wordId: number, correct: boolean): number {
+const MS_PER_DAY = 86400000;
+
+export function recordUsage(wordId: number, correct: boolean): number | null {
+  if (correct) return null;
   const db = getDatabase();
-  const result = db.prepare("INSERT INTO usage_history (word_id, timestamp, correct) VALUES (?, datetime('now'), ?)").run(wordId, correct ? 1 : 0);
+  const day = Math.floor(Date.now() / MS_PER_DAY);
+  const result = db.prepare("INSERT INTO usage_history (word_id, day) VALUES (?, ?)").run(wordId, day);
   return result.lastInsertRowid as number;
 }
 
@@ -34,7 +38,7 @@ export function getWordsWithUsage(): { word: Word; usage: UsageEntry[] }[] {
   const words = getAllWords();
   const db = getDatabase();
   return words.map((word) => {
-    const usage = db.prepare("SELECT id, word_id, timestamp, correct FROM usage_history WHERE word_id = ? ORDER BY timestamp DESC").all(word.id) as UsageEntry[];
+    const usage = db.prepare("SELECT id, word_id, day FROM usage_history WHERE word_id = ? ORDER BY day DESC").all(word.id) as UsageEntry[];
     return { word, usage };
   });
 }

@@ -14,7 +14,11 @@ type WordRow = {
   score: number;
 };
 
-type UsageHistory = { timestamp: string; correct: boolean }[];
+type UsageHistory = { day: number }[];
+
+function dayToDateString(day: number): string {
+  return new Date(day * 86400000).toISOString().slice(0, 10);
+}
 
 function WordsContent() {
   const [words, setWords] = useState<WordRow[]>([]);
@@ -75,7 +79,7 @@ function WordsContent() {
       if (!res.ok) return;
       const data = await res.json();
       const history: UsageHistory = (data.usage_history ?? []).map(
-        (u: { timestamp: string; correct: boolean }) => ({ timestamp: u.timestamp, correct: u.correct })
+        (u: { day: number }) => ({ day: u.day })
       );
       setUsageCache((prev) => ({ ...prev, [word]: history }));
     } catch {
@@ -99,7 +103,7 @@ function WordsContent() {
       <header className="mb-6">
         <h1 className="text-xl font-semibold text-gray-900">Word database</h1>
         <p className="text-sm text-gray-600 mt-1">
-          Full list sorted by spaced repetition score (higher = more due). Not the same as current working vocabulary.
+          Full list sorted by importance score (higher = more to practice). Not the same as current working vocabulary.
         </p>
       </header>
 
@@ -155,17 +159,15 @@ function WordsContent() {
                       <tr className="bg-gray-50 border-b border-gray-200">
                         <td colSpan={6} className="py-3 px-3">
                           <div className="text-sm">
-                            <span className="font-medium text-gray-700">Usage history: {row.word}</span>
+                            <span className="font-medium text-gray-700">Failure history for {row.word}</span>
                             {usageCache[row.word] === undefined ? (
                               <p className="text-gray-500 mt-1">Loading…</p>
                             ) : usageCache[row.word].length === 0 ? (
-                              <p className="text-gray-500 mt-1">(none)</p>
+                              <p className="text-gray-500 mt-1">(no recorded failures)</p>
                             ) : (
                               <ul className="mt-1 space-y-0.5">
                                 {usageCache[row.word].map((u, i) => (
-                                  <li key={i}>
-                                    {u.timestamp} — correct: {u.correct ? "yes" : "no"}
-                                  </li>
+                                  <li key={i}>Failed on: {dayToDateString(u.day)}</li>
                                 ))}
                               </ul>
                             )}

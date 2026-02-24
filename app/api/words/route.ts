@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
         frequency: word.frequency,
         pinyin: word.pinyin,
         english_translation: word.english_translation,
-        usage_history: usage.map((u) => ({ timestamp: u.timestamp, correct: u.correct === 1 })),
+        usage_history: usage.map((u) => ({ day: u.day })),
       });
     }
     const data = getWordsWithUsage();
@@ -91,7 +91,7 @@ function wordResponse(word: { id: number; word: string; frequency: number; pinyi
     frequency: word.frequency,
     pinyin: word.pinyin,
     english_translation: word.english_translation,
-    usage_history: usage.map((u) => ({ timestamp: u.timestamp, correct: u.correct === 1 })),
+    usage_history: usage.map((u) => ({ day: u.day })),
   });
 }
 
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
           frequency: inserted.frequency,
           pinyin: inserted.pinyin,
           english_translation: inserted.english_translation,
-          usage_history: [],
+          usage_history: [] as { day: number }[],
         },
         { status: 201 }
       );

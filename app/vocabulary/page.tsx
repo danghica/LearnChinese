@@ -11,16 +11,16 @@ type WordDetail = {
   pinyin: string;
   english_translation: string;
   created_at: string | null;
-  usage: { timestamp: string; correct: number }[];
+  usage: { day: number }[];
 };
+
+function dayToDateString(day: number): string {
+  return new Date(day * 86400000).toISOString().slice(0, 10);
+}
 
 function VocabularyContent() {
   const searchParams = useSearchParams();
-  const newWordsParam = searchParams.get("newWordsPerConversation");
   const debugParam = searchParams.get("debug");
-  const newWordsPerConversation = newWordsParam
-    ? Math.max(1, Math.min(50, parseInt(newWordsParam, 10) || 10))
-    : 10;
   const debug = debugParam === "true" || debugParam === "1" || debugParam === "yes";
 
   const [vocabulary, setVocabulary] = useState<string[] | WordDetail[] | null>(null);
@@ -28,7 +28,7 @@ function VocabularyContent() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const url = `/api/vocabulary?newWordsPerConversation=${newWordsPerConversation}&debug=${debug}`;
+    const url = `/api/vocabulary${debug ? "?debug=true" : ""}`;
     fetch(url)
       .then((res) => {
         if (!res.ok) throw new Error(res.statusText);
@@ -39,7 +39,7 @@ function VocabularyContent() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
       .finally(() => setLoading(false));
-  }, [newWordsPerConversation, debug]);
+  }, [debug]);
 
   if (loading) {
     return (
@@ -95,15 +95,13 @@ function VocabularyContent() {
                 )}
               </div>
               <div className="mt-3 pt-3 border-t border-gray-100">
-                <span className="font-medium text-gray-500 text-sm">usage history:</span>
+                <span className="font-medium text-gray-500 text-sm">failure history:</span>
                 {item.usage.length === 0 ? (
-                  <p className="text-gray-500 text-sm mt-1">(none)</p>
+                  <p className="text-gray-500 text-sm mt-1">(no recorded failures)</p>
                 ) : (
                   <ul className="mt-1 text-sm space-y-0.5">
                     {item.usage.map((u, i) => (
-                      <li key={i}>
-                        {u.timestamp} — correct: {u.correct}
-                      </li>
+                      <li key={i}>Failed on: {dayToDateString(u.day)}</li>
                     ))}
                   </ul>
                 )}

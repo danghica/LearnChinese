@@ -29,17 +29,25 @@ function initSchema(database: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_words_frequency ON words(frequency);
     CREATE INDEX IF NOT EXISTS idx_words_word ON words(word);
-
-    CREATE TABLE IF NOT EXISTS usage_history (
+  `);
+  const tableInfo = database.prepare("PRAGMA table_info(usage_history)").all() as { name: string }[];
+  const hasOldSchema = tableInfo.length > 0 && tableInfo.some((c) => c.name === "timestamp");
+  if (hasOldSchema) {
+    database.exec(`DROP TABLE usage_history;`);
+  }
+  if (hasOldSchema || tableInfo.length === 0) {
+    database.exec(`
+    CREATE TABLE usage_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       word_id INTEGER NOT NULL REFERENCES words(id),
-      timestamp TEXT NOT NULL DEFAULT (datetime('now')),
-      correct INTEGER NOT NULL,
+      day INTEGER NOT NULL,
       FOREIGN KEY (word_id) REFERENCES words(id)
     );
-    CREATE INDEX IF NOT EXISTS idx_usage_word_id ON usage_history(word_id);
-    CREATE INDEX IF NOT EXISTS idx_usage_timestamp ON usage_history(timestamp);
-
+    CREATE INDEX idx_usage_word_id ON usage_history(word_id);
+    CREATE INDEX idx_usage_day ON usage_history(day);
+  `);
+  }
+  database.exec(`
     CREATE TABLE IF NOT EXISTS conversations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       topic TEXT,
@@ -75,8 +83,7 @@ export type Word = {
 export type UsageEntry = {
   id: number;
   word_id: number;
-  timestamp: string;
-  correct: number;
+  day: number;
 };
 
 export type Conversation = {

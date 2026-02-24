@@ -6,37 +6,35 @@ import { segment } from "@/lib/segment";
 import { getWordByWord } from "@/lib/words";
 import { recordUsage } from "@/lib/words";
 
-// Role only; vocabulary instruction is in vocabBlock + VOCAB_HSK2_INSTRUCTION below.
 const STANDING_PROMPT =
   "Use chinese language for the dialogue. Use English language for corrections and explanations.";
 
-// Explicit plan instruction: respond in Chinese using this vocabulary AND all HSK2 words.
-const VOCAB_HSK2_INSTRUCTION =
-  "Respond to the next prompt in Chinese using words in this vocabulary (include vocabulary computed as before) and all HSK2 words.";
+const VOCAB_INSTRUCTION =
+  "Strongly prefer using words from this vocabulary list whenever possible. You may also use any HSK1, HSK2, or HSK3 vocabulary as needed.";
 
 function buildAcknowledgeSystemPrompt(vocabList: string[]): string {
   const vocabBlock = vocabList.length
-    ? `Vocabulary to use: ${vocabList.join(", ")}. You may also use any HSK2 vocabulary.`
-    : "You may use any HSK2 vocabulary.";
-  return `${STANDING_PROMPT}\n\n${vocabBlock}\n\n${VOCAB_HSK2_INSTRUCTION}`;
+    ? `Vocabulary to use: ${vocabList.join(", ")}.\n\n${VOCAB_INSTRUCTION}`
+    : `You may use any HSK1, HSK2, or HSK3 vocabulary.`;
+  return `${STANDING_PROMPT}\n\n${vocabBlock}\n\nRespond to the next prompt in Chinese using this vocabulary.`;
 }
 
 function buildSystemPrompt(vocabList: string[], topic: string | null, isNew: boolean): string {
   const vocabBlock = vocabList.length
-    ? `Vocabulary to use: ${vocabList.join(", ")}. You may also use any HSK2 vocabulary.`
-    : "You may use any HSK2 vocabulary.";
+    ? `Vocabulary to use: ${vocabList.join(", ")}.\n\n${VOCAB_INSTRUCTION}`
+    : `You may use any HSK1, HSK2, or HSK3 vocabulary.`;
   if (isNew) {
     const topicPart = topic && topic.trim()
       ? `The user has requested a topic or theme (in English or Chinese): "${topic}".`
       : "The user did not specify a topic; use a general conversation theme.";
-    return `${STANDING_PROMPT}\n\n${vocabBlock}\n\n${topicPart}\n\n${VOCAB_HSK2_INSTRUCTION}\n\nYou MUST reply with your first message in Chinese. Greet the user and start the conversation (e.g. introduce the topic and ask a first question). Respond in Chinese only.`;
+    return `${STANDING_PROMPT}\n\n${vocabBlock}\n\n${topicPart}\n\nYou MUST reply with your first message in Chinese. Greet the user and start the conversation (e.g. introduce the topic and ask a first question). Respond in Chinese only.`;
   }
   return (
     `${STANDING_PROMPT}\n\nYou are continuing a conversation. For each user message you must do TWO things in order:\n\n` +
     `1. First, evaluate the user's answer for correctness. Output this evaluation clearly using English ` +
     `(e.g. whether their answer is correct or incorrect, what was wrong or what was good, brief feedback).\n\n` +
     `2. Then, respond conversationally in Chinese: continue the dialogue, ask a follow-up question, or test comprehension of what was said so far. ` +
-    `Use the vocabulary list below and any HSK2 vocabulary.\n\n` +
+    `Use the vocabulary list below; strongly prefer it whenever possible, and you may use any HSK1, HSK2, or HSK3 vocabulary as needed.\n\n` +
     `When you correct the user's answer, at the END of your message add a JSON block on a new line with the list of Chinese words they used incorrectly, e.g.:\n` +
     `{"misused_words": ["词1", "词2"]}\nIf no words were misused, use: {"misused_words": []}\n\n` +
     `${vocabBlock}\n\nRespond in Chinese.`
@@ -68,10 +66,7 @@ export async function POST(request: NextRequest) {
     if (lastMessage.role !== "user") {
       return NextResponse.json({ error: "Last message must be from user" }, { status: 400 });
     }
-    const vocabList = getSelectedVocabulary({
-      topN: 250,
-      newK: typeof newWordsPerConversation === "number" ? newWordsPerConversation : 10,
-    });
+    const vocabList = getSelectedVocabulary({ topWords: 300 });
     const vocabSet = new Set(vocabList);
     const usageRecorded: { word: string; correct: boolean }[] = [];
     const convId = rawConvId ? parseInt(String(rawConvId), 10) : null;
@@ -82,7 +77,7 @@ export async function POST(request: NextRequest) {
       // New conversation: acknowledge then first reply (two LLM calls). No DB until after call 1.
       const acknowledgeSystem = buildAcknowledgeSystemPrompt(vocabList);
       const acknowledgeUser =
-        "Respond to the next prompt in Chinese using words in this vocabulary (include vocabulary computed as before) and all HSK2 words. Acknowledge by replying with exactly: Acknowledged.";
+        "Respond to the next prompt in Chinese using this vocabulary and any HSK1, HSK2, or HSK3 words. Acknowledge by replying with exactly: Acknowledged.";
       const ackMessages = [
         { role: "system" as const, content: acknowledgeSystem },
         { role: "user" as const, content: acknowledgeUser },
@@ -149,7 +144,6 @@ export async function POST(request: NextRequest) {
           if (!w.trim()) continue;
           const wordRow = getWordByWord(w);
           if (!wordRow) continue;
-          recordUsage(wordRow.id, true);
           usageRecorded.push({ word: wordRow.word, correct: true });
         }
       }
@@ -181,7 +175,7 @@ export async function POST(request: NextRequest) {
         const wordRow = getWordByWord(w);
         if (!wordRow || !vocabSet.has(w)) continue;
         const correct = !misusedSet.has(w);
-        recordUsage(wordRow.id, correct);
+        if (!correct) recordUsage(wordRow.id, false);
         usageRecorded.push({ word: wordRow.word, correct });
       }
     }

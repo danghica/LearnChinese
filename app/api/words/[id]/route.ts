@@ -21,7 +21,7 @@ export async function GET(
       frequency: word.frequency,
       pinyin: word.pinyin,
       english_translation: word.english_translation,
-      usage_history: usage.map((u) => ({ timestamp: u.timestamp, correct: u.correct === 1 })),
+      usage_history: usage.map((u) => ({ day: u.day })),
     });
   } catch (e) {
     console.error(e);

@@ -3,7 +3,7 @@
 ## Tables
 
 - **words:** id, word, frequency (rank 1 = most frequent), pinyin, english_translation
-- **usage_history:** word_id, timestamp, correct (0/1)
+- **usage_history:** id, word_id, day (INTEGER, days since Unix epoch). One row per **failed** use of a word; only failures are recorded.
 - **conversations:** id, topic, created_at, updated_at
 - **messages:** id, conversation_id, role (user | assistant), content, created_at
 
@@ -11,6 +11,6 @@
 
 Implemented in [lib/vocabulary.ts](../lib/vocabulary.ts):
 
-- Union of **top N** by spaced-frequency score and **top K** words with no usage history.
-- Score formula: `3001 - frequency` plus a “due” bonus (e.g. +1) if there is no successful use in the last 24 hours.
-- Options: `topN` (default 250), `newK` (default 10, overridden by “New words per conversation” in settings).
+- **Current vocabulary** = top **300** words when sorted by **importance score** (descending), with frequency rank as tie-breaker (ascending).
+- Importance is computed from failure events only, using exponential decay and clustering. See [vocabulary-score-algorithm.md](vocabulary-score-algorithm.md) for the full algorithm.
+- Option: `topWords` (default 300).

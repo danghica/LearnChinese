@@ -1,52 +1,66 @@
 import { getWordsWithUsage } from "./words";
 import type { Word } from "./db";
+import type { UsageEntry } from "./db";
 
-const DEFAULT_TOP_N = 250;
-const DEFAULT_NEW_K = 10;
-const DUE_HOURS = 24;
+const VOCABULARY_SIZE = 300;
+const DECAY_HALFLIFE_DAYS = 30;
+const LAMBDA = Math.LN2 / DECAY_HALFLIFE_DAYS;
+const SIGMA_EPSILON = 1e-6;
+const MS_PER_DAY = 86400000;
 
-export type WordWithUsage = { word: Word; usage: { timestamp: string; correct: number }[] };
+export type WordWithUsage = { word: Word; usage: UsageEntry[] };
 
 /**
- * need_score: 0 if word has a successful use within last 24h, else 1.
- * score = (3001 - frequency_rank) + need_score (higher = more preferred).
+ * Current day (days since Unix epoch).
  */
-export function scoreWord(word: Word, usage: { timestamp: string; correct: number }[]): number {
-  const base = 3001 - word.frequency;
-  const lastSuccess = usage.find((u) => u.correct === 1);
-  if (!lastSuccess) return base + 1;
-  const lastTime = new Date(lastSuccess.timestamp).getTime();
-  const hoursAgo = (Date.now() - lastTime) / (1000 * 60 * 60);
-  const needScore = hoursAgo >= DUE_HOURS ? 1 : 0;
-  return base + needScore;
+function currentDay(): number {
+  return Math.floor(Date.now() / MS_PER_DAY);
 }
 
 /**
- * Pure function: selected vocabulary from word+usage data.
- * (1) Top N by spaced-frequency score (2) Top K with no usage, by frequency rank.
+ * Importance score from failure events: exponential decay + clustering.
+ * importance = F_eff / σ; no failures => 0.
+ * See documentation/vocabulary-score-algorithm.md.
+ */
+export function scoreWord(word: Word, usage: { day: number }[]): number {
+  if (usage.length === 0) return 0;
+  const T = currentDay();
+  const ages = usage.map((u) => Math.max(0, T - u.day));
+  const weights = ages.map((a) => Math.exp(-LAMBDA * a));
+  const F_eff = weights.reduce((s, w) => s + w, 0);
+  if (F_eff <= 0) return 0;
+  const days = usage.map((u) => u.day);
+  const mu = days.reduce((s, t, i) => s + weights[i] * t, 0) / F_eff;
+  const variance =
+    days.reduce((s, t, i) => s + weights[i] * (t - mu) ** 2, 0) / F_eff;
+  const sigma = Math.sqrt(Math.max(0, variance)) + SIGMA_EPSILON;
+  return F_eff / sigma;
+}
+
+/**
+ * Selected vocabulary: top N words by importance (desc), tie-break by frequency (asc).
+ * N = topWords (default 300).
  */
 export function computeSelectedVocabulary(
   data: WordWithUsage[],
-  options: { topN?: number; newK?: number } = {}
+  options: { topWords?: number } = {}
 ): string[] {
-  const topN = options.topN ?? DEFAULT_TOP_N;
-  const newK = options.newK ?? DEFAULT_NEW_K;
+  const topWords = options.topWords ?? VOCABULARY_SIZE;
   const withScores = data.map(({ word, usage }) => ({
     word,
-    score: scoreWord(word, usage),
-    hasUsage: usage.length > 0,
+    importance: scoreWord(word, usage),
   }));
-  const byScore = [...withScores].sort((a, b) => b.score - a.score);
-  const spacedSet = new Set(byScore.slice(0, topN).map((x) => x.word.word));
-  const noUsage = withScores.filter((x) => !x.hasUsage).sort((a, b) => a.word.frequency - b.word.frequency);
-  noUsage.slice(0, newK).map((x) => x.word.word).forEach((w) => spacedSet.add(w));
-  return Array.from(spacedSet);
+  const sorted = [...withScores].sort((a, b) => {
+    if (b.importance !== a.importance) return b.importance - a.importance;
+    return a.word.frequency - b.word.frequency;
+  });
+  return sorted.slice(0, topWords).map((x) => x.word.word);
 }
 
 /**
  * Selected vocabulary from DB (uses getWordsWithUsage).
  */
-export function getSelectedVocabulary(options: { topN?: number; newK?: number } = {}): string[] {
+export function getSelectedVocabulary(options: { topWords?: number } = {}): string[] {
   const data = getWordsWithUsage();
   return computeSelectedVocabulary(data, options);
 }
