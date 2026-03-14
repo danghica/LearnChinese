@@ -39,7 +39,7 @@ export default function SettingsMenu({
           onChange={(e) => onDebugChange(e.target.checked)}
           className="rounded"
         />
-        Debug mode (show LLM traffic)
+        Debug mode
       </label>
       <div className="mt-3 pt-3 border-t border-gray-200 space-y-1">
         <a
