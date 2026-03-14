@@ -6,7 +6,6 @@ type Props = {
   debugMode: boolean;
   onDebugChange: (on: boolean) => void;
   open: boolean;
-  onClose: () => void;
 };
 
 export default function SettingsMenu({
@@ -15,16 +14,12 @@ export default function SettingsMenu({
   debugMode,
   onDebugChange,
   open,
-  onClose,
 }: Props) {
   if (!open) return null;
   return (
     <div className="absolute right-0 top-full mt-1 w-64 p-4 bg-white border border-gray-200 rounded-lg shadow z-10">
-      <div className="flex justify-between items-center mb-3">
+      <div className="mb-3">
         <span className="font-medium text-gray-900">Settings</span>
-        <button type="button" onClick={onClose} className="text-gray-500 hover:text-gray-700">
-          ×
-        </button>
       </div>
       <label className="block text-sm text-gray-700 mb-3">
         New words per conversation

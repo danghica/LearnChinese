@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import ChatView from "@/components/ChatView";
 import SettingsMenu from "@/components/SettingsMenu";
 
@@ -24,11 +24,23 @@ export default function Home() {
   const [newWordsPerConversation, setNewWordsPerConversation] = useState(DEFAULT_NEW_WORDS);
   const [debugMode, setDebugMode] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const menuContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setNewWordsPerConversation(getStoredNewWords());
     setDebugMode(getStoredDebugMode());
   }, []);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuContainerRef.current && !menuContainerRef.current.contains(e.target as Node)) {
+        setSettingsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [settingsOpen]);
 
   const handleNewWordsChange = useCallback((n: number) => {
     setNewWordsPerConversation(n);
@@ -44,13 +56,22 @@ export default function Home() {
     <main className="bg-gray-50 flex flex-col max-h-[85vh] min-h-0">
       <header className="flex justify-between items-center px-4 py-2 border-b bg-white">
         <h1 className="text-lg font-semibold text-gray-900">Chinese vocabulary chat</h1>
-        <div className="relative">
+        <div className="relative" ref={menuContainerRef}>
           <button
             type="button"
             onClick={() => setSettingsOpen((o) => !o)}
-            className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded"
+            className="p-2 text-gray-600 hover:bg-gray-100 rounded"
+            aria-label="Open menu"
           >
-            Settings
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="w-6 h-6"
+              aria-hidden
+            >
+              <path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z" />
+            </svg>
           </button>
           <SettingsMenu
             newWordsPerConversation={newWordsPerConversation}
@@ -58,7 +79,6 @@ export default function Home() {
             debugMode={debugMode}
             onDebugChange={handleDebugChange}
             open={settingsOpen}
-            onClose={() => setSettingsOpen(false)}
           />
         </div>
       </header>
