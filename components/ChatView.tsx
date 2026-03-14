@@ -1,8 +1,11 @@
 "use client";
 
 import React, { useState, useRef, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import MessageBlock from "./MessageBlock";
 import WordLookupNote from "./WordLookupNote";
+
+const STORY_STORAGE_KEY = "story-content";
 
 export type SegmentItem = { word: string; inVocabulary?: boolean };
 
@@ -47,6 +50,7 @@ export default function ChatView({
   const [trafficLog, setTrafficLog] = useState<TrafficLogEntry[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const debugPanelRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   useEffect(() => {
     // Only sync from props when parent is passing loaded conversation data (e.g. "Continue").
@@ -154,6 +158,30 @@ export default function ChatView({
     },
     [input, loading, messages, convId, newWordsPerConversation, topic, sendRequest]
   );
+
+  const handleStory = useCallback(async () => {
+    if (loading) return;
+    setError(null);
+    setLoading(true);
+    const topic = input.trim() || "";
+    try {
+      const res = await fetch("/api/story", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      if (typeof window !== "undefined" && data.blocks) {
+        window.sessionStorage.setItem(STORY_STORAGE_KEY, JSON.stringify(data));
+        router.push("/story");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  }, [loading, input, router]);
 
   const handleWordClick = useCallback(async (word: string) => {
     const cached = wordLookup[word];
@@ -274,6 +302,14 @@ export default function ChatView({
               className="py-2 px-4 bg-gray-600 text-white rounded-md hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Next chat
+            </button>
+            <button
+              type="button"
+              onClick={handleStory}
+              disabled={loading}
+              className="py-2 px-4 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Story
             </button>
           </div>
         </div>

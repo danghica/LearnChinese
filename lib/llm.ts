@@ -4,11 +4,16 @@ const DEFAULT_MODEL = "groq/compound-mini";
 
 export type ChatMessage = { role: "user" | "assistant" | "system"; content: string };
 
-export async function chat(messages: ChatMessage[], model: string = DEFAULT_MODEL): Promise<string> {
+export async function chat(
+  messages: ChatMessage[],
+  model: string = DEFAULT_MODEL,
+  options?: { max_tokens?: number }
+): Promise<string> {
   const apiKey = process.env.GROQ_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("GROQ_API_KEY is not set. Add it to .env.local (see .env.local.example). Get a key at https://console.groq.com");
   }
+  const max_tokens = options?.max_tokens ?? 1024;
   const res = await fetch(GROQ_API_URL, {
     method: "POST",
     headers: {
@@ -18,7 +23,7 @@ export async function chat(messages: ChatMessage[], model: string = DEFAULT_MODE
     body: JSON.stringify({
       model,
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
-      max_tokens: 1024,
+      max_tokens,
     }),
   });
   if (!res.ok) {

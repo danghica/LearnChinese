@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
+import { getChineseVoice } from "@/lib/speech";
 
 type SegmentInput = { word: string; inVocabulary?: boolean } | string;
 
@@ -63,7 +64,7 @@ export default function MessageBlock({ role, content, segments, wordLookup, onWo
       content
     );
 
-  const handleSpeakClick = useCallback(() => {
+  const handleSpeakClick = useCallback(async () => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     if (window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
@@ -74,8 +75,7 @@ export default function MessageBlock({ role, content, segments, wordLookup, onWo
     if (!text) return;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "zh-CN";
-    const voices = window.speechSynthesis.getVoices();
-    const zhVoice = voices.find((v) => v.lang.startsWith("zh"));
+    const zhVoice = await getChineseVoice();
     if (zhVoice) utterance.voice = zhVoice;
     utterance.onend = () => setIsPlaying(false);
     utterance.onerror = () => setIsPlaying(false);
