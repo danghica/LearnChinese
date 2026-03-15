@@ -170,9 +170,15 @@ export default function ChatView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ topic }),
       });
-      const data = await res.json();
+      const resText = await res.text();
+      let data: { error?: string; blocks?: unknown[] };
+      try {
+        data = resText ? JSON.parse(resText) : {};
+      } catch (parseErr) {
+        throw parseErr;
+      }
       if (!res.ok) throw new Error(data.error || "Request failed");
-      if (typeof window !== "undefined" && data.blocks) {
+      if (typeof window !== "undefined" && data?.blocks) {
         window.sessionStorage.setItem(STORY_STORAGE_KEY, JSON.stringify(data));
         router.push("/story");
       }
