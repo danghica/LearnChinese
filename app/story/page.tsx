@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import WordLookupNote from "@/components/WordLookupNote";
+import { parseWordsApiErrorResponse } from "@/lib/parseWordsApiError";
 import { getChineseVoice } from "@/lib/speech";
 
 const STORY_STORAGE_KEY = "story-content";
@@ -63,6 +64,11 @@ export default function StoryPage() {
     }
     try {
       let res = await fetch(`/api/words?word=${encodeURIComponent(word)}`);
+      if (res.status !== 404 && !res.ok) {
+        const errMsg = await parseWordsApiErrorResponse(res);
+        setLookupNote({ word, pinyin: "", english_translation: errMsg });
+        return;
+      }
       if (res.status === 404) {
         setLookupNote({ word, pinyin: "", english_translation: "Looking up…" });
         const addRes = await fetch("/api/words", {
@@ -84,15 +90,30 @@ export default function StoryPage() {
         }
         res = addRes;
       }
-      const data = await res.json();
+      const data = (await res.json()) as {
+        id?: number;
+        pinyin?: string;
+        english_translation?: string;
+        words?: unknown;
+      };
+      if (Array.isArray(data.words) || typeof data.pinyin !== "string" || typeof data.english_translation !== "string") {
+        setLookupNote({
+          word,
+          pinyin: "",
+          english_translation: "Word lookup returned an unexpected response.",
+        });
+        return;
+      }
       const info = { pinyin: data.pinyin, english_translation: data.english_translation };
       setWordLookup((prev) => ({ ...prev, [word]: info }));
       setLookupNote({ word, ...info });
-      await fetch("/api/usage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId: data.id, correct: false }),
-      });
+      if (typeof data.id === "number") {
+        await fetch("/api/usage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordId: data.id, correct: false }),
+        });
+      }
     } catch {
       setLookupNote({ word, pinyin: "", english_translation: "Lookup failed" });
     }
@@ -108,22 +129,29 @@ export default function StoryPage() {
     const zhVoice = await getChineseVoice();
     const utterances: SpeechSynthesisUtterance[] = [];
     for (const b of blocks) {
-      if (b.chinese?.trim()) {
-        const u1 = new SpeechSynthesisUtterance(b.chinese.trim());
-        u1.lang = "zh-CN";
-        if (zhVoice) u1.voice = zhVoice;
-        utterances.push(u1);
-      }
       if (b.english?.trim()) {
-        const u2 = new SpeechSynthesisUtterance(b.english.trim());
-        u2.lang = "en";
-        utterances.push(u2);
+        const uEn = new SpeechSynthesisUtterance(b.english.trim());
+        uEn.lang = "en";
+        utterances.push(uEn);
       }
-      if (b.chineseComma?.trim()) {
-        const u3 = new SpeechSynthesisUtterance(b.chineseComma.trim());
-        u3.lang = "zh-CN";
-        if (zhVoice) u3.voice = zhVoice;
-        utterances.push(u3);
+      // Same string as on-screen segmented row: "token1, token2, …"
+      const segmented =
+        b.chineseComma
+          ?.split(",")
+          .map((w) => w.trim())
+          .filter(Boolean)
+          .join(", ") ?? "";
+      if (segmented) {
+        const uSeg = new SpeechSynthesisUtterance(segmented);
+        uSeg.lang = "zh-CN";
+        if (zhVoice) uSeg.voice = zhVoice;
+        utterances.push(uSeg);
+      }
+      if (b.chinese?.trim()) {
+        const uZh = new SpeechSynthesisUtterance(b.chinese.trim());
+        uZh.lang = "zh-CN";
+        if (zhVoice) uZh.voice = zhVoice;
+        utterances.push(uZh);
       }
     }
     if (utterances.length === 0) return;
@@ -174,7 +202,6 @@ export default function StoryPage() {
       <article className="space-y-6">
         {blocks.map((block, idx) => (
           <div key={idx} className="space-y-2">
-            <p className="text-lg text-gray-900">{block.chinese}</p>
             <p className="text-gray-600 italic">{block.english}</p>
             <p className="text-gray-700 text-sm">
               {block.chineseComma
@@ -194,6 +221,7 @@ export default function StoryPage() {
                   </span>
                 ))}
             </p>
+            <p className="text-lg text-gray-900">{block.chinese}</p>
           </div>
         ))}
       </article>

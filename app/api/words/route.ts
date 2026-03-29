@@ -79,7 +79,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ words, total });
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const details =
+      process.env.NODE_ENV === "development"
+        ? e instanceof Error
+          ? e.message
+          : String(e)
+        : undefined;
+    return NextResponse.json(
+      { error: "Internal server error", ...(details ? { details } : {}) },
+      { status: 500 }
+    );
   }
 }
 
@@ -154,6 +163,15 @@ export async function POST(request: NextRequest) {
     }
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const details =
+      process.env.NODE_ENV === "development"
+        ? e instanceof Error
+          ? e.message
+          : String(e)
+        : undefined;
+    return NextResponse.json(
+      { error: "Internal server error", ...(details ? { details } : {}) },
+      { status: 500 }
+    );
   }
 }

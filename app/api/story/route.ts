@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { chat } from "@/lib/llm";
+import { chat, type ChatMessage } from "@/lib/llm";
 import { segment } from "@/lib/segment";
+import { isJiebaFriendlySentence, isPrimarilyHanzi } from "@/lib/storyValidation";
 
 const STORY_WORD_COUNT = 1500;
-const STORY_SYSTEM_PROMPT = `You are a story teller. Write a story in Chinese using only HSK1, HSK2, and HSK3 grammar and vocabulary. The story must be approximately ${STORY_WORD_COUNT} words long (in total across all sentences). You must respond with **only** the story text in Chinese—no JSON, no explanations, no numbering, no English.`;
+const STORY_SYSTEM_PROMPT = `You are a story teller. Write a story using only HSK1, HSK2, and HSK3 grammar and vocabulary. The story must be approximately ${STORY_WORD_COUNT} Chinese words long (in total across all sentences).
+
+Output rules (strict):
+- Use Chinese characters (汉字) for every Chinese word. Example of correct style: 小女孩走进森林。
+- Do not write Chinese in Hanyu Pinyin or any Latin romanization. Do not mix English into the story body.
+- No JSON, no numbering, no meta commentary—only the story text.`;
 
 /** Split Chinese text into sentences on sentence-ending punctuation and newlines. Keeps delimiter with the sentence. */
 function splitIntoSentences(text: string): string[] {
@@ -57,26 +63,36 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const topic = typeof body.topic === "string" ? body.topic.trim() : "";
     const topicPhrase = topic || "any topic";
-    const userPrompt = `Tell me a story with the following topic using Chinese language: ${topicPhrase}. The story must be approximately ${STORY_WORD_COUNT} words long. Use HSK1, HSK2, and HSK3 level grammar and vocabulary. Reply with only the story text in Chinese, nothing else.`;
+    const userPrompt = `Tell me a story with the following topic: ${topicPhrase}. Write the entire story in Chinese characters (汉字) only—approximately ${STORY_WORD_COUNT} Chinese words. Use HSK1–HSK3 vocabulary. Do not use Pinyin or English in the story. Reply with nothing but the story text.`;
 
-    const messages = [
-      { role: "system" as const, content: STORY_SYSTEM_PROMPT },
-      { role: "user" as const, content: userPrompt },
+    const messages: ChatMessage[] = [
+      { role: "system", content: STORY_SYSTEM_PROMPT },
+      { role: "user", content: userPrompt },
     ];
-    const maxAttempts = 3;
+    const maxAttempts = 4;
     const storyModel = "llama-3.1-8b-instant";
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       rawStory = await chat(messages, storyModel, { max_tokens: 8192 });
-      if (rawStory?.trim()) break;
+      const trimmed = rawStory?.trim() ?? "";
+      if (trimmed && isPrimarilyHanzi(trimmed)) break;
       if (attempt < maxAttempts) {
-        await new Promise((r) => setTimeout(r, 800 * attempt));
+        messages.push({ role: "assistant", content: trimmed || "(empty response)" });
+        messages.push({
+          role: "user",
+          content:
+            "Your last reply was not valid: it must be written entirely in Chinese characters (汉字), not Pinyin or English. Rewrite the complete story from the beginning with the same topic and length, using 汉字 for all Chinese words.",
+        });
+        await new Promise((r) => setTimeout(r, 600 * attempt));
       }
     }
 
-    if (!rawStory?.trim()) {
+    if (!rawStory?.trim() || !isPrimarilyHanzi(rawStory)) {
       return NextResponse.json(
-        { error: "Story generation returned no content. Please try again." },
+        {
+          error:
+            "Story generation did not return proper Chinese (汉字). The model may have used Pinyin—try again, or use a different topic.",
+        },
         { status: 502 }
       );
     }
@@ -108,7 +124,9 @@ export async function POST(request: NextRequest) {
       }
       for (let j = 0; j < batch.length; j++) {
         const chinese = batch[j];
-        const chineseWords = segment(chinese);
+        const chineseWords = isJiebaFriendlySentence(chinese)
+          ? segment(chinese)
+          : [chinese.trim() || chinese];
         const chineseComma = chineseWords.join(",");
         blocks.push({
           chinese,

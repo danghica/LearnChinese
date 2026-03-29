@@ -10,6 +10,8 @@ Single-user web app to practice Chinese with vocabulary-based conversations. The
 4. Run dev server: `npm run dev`
 5. Open [http://localhost:3000](http://localhost:3000).
 
+**Node version:** Use **Node 20 or 22 LTS** for this project. Node **25+** often has no prebuilt `better-sqlite3` binary yet, so `npm install` tries to compile from source. If that compile fails with `'climits' file not found`, switch to Node 22 (e.g. `nvm install 22 && nvm use 22`), remove `node_modules`, and run `npm install` again. Alternatively install full **Xcode** (not only Command Line Tools) and ensure `xcode-select -p` points at a valid developer directory.
+
 ## Scripts
 
 - `npm run dev` — start Next.js dev server

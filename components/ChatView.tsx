@@ -4,6 +4,7 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import MessageBlock from "./MessageBlock";
 import WordLookupNote from "./WordLookupNote";
+import { parseWordsApiErrorResponse } from "@/lib/parseWordsApiError";
 
 const STORY_STORAGE_KEY = "story-content";
 
@@ -197,6 +198,11 @@ export default function ChatView({
     }
     try {
       let res = await fetch(`/api/words?word=${encodeURIComponent(word)}`);
+      if (res.status !== 404 && !res.ok) {
+        const errMsg = await parseWordsApiErrorResponse(res);
+        setLookupNote({ word, pinyin: "", english_translation: errMsg });
+        return;
+      }
       if (res.status === 404) {
         setLookupNote({ word, pinyin: "", english_translation: "Looking up…" });
         const addRes = await fetch("/api/words", {
@@ -218,15 +224,30 @@ export default function ChatView({
         }
         res = addRes;
       }
-      const data = await res.json();
+      const data = (await res.json()) as {
+        id?: number;
+        pinyin?: string;
+        english_translation?: string;
+        words?: unknown;
+      };
+      if (Array.isArray(data.words) || typeof data.pinyin !== "string" || typeof data.english_translation !== "string") {
+        setLookupNote({
+          word,
+          pinyin: "",
+          english_translation: "Word lookup returned an unexpected response.",
+        });
+        return;
+      }
       const info = { pinyin: data.pinyin, english_translation: data.english_translation };
       setWordLookup((prev) => ({ ...prev, [word]: info }));
       setLookupNote({ word, ...info });
-      await fetch("/api/usage", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId: data.id, correct: false }),
-      });
+      if (typeof data.id === "number") {
+        await fetch("/api/usage", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordId: data.id, correct: false }),
+        });
+      }
     } catch {
       setLookupNote({ word, pinyin: "", english_translation: "Lookup failed" });
     }
