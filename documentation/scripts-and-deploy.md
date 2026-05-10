@@ -15,7 +15,7 @@ See [README.md](../README.md) for full list.
 
 The app needs **persistent storage** for SQLite and a **Node runtime** (not serverless-only). The main [README.md](../README.md) recommends:
 
-- **Railway** — Volume mounted (e.g. `/data`), `DATABASE_URL=/data/app.sqlite`, `GROQ_API_KEY`; run `npm run seed` once.
+- **Railway** — Volume mounted (e.g. `/data`), `DATABASE_URL=/data/app.sqlite`, `DEEPSEEK_API_KEY`; run `npm run seed` once.
 - **Render** — Web Service with Disk; same env and seed step.
 - **Fly.io** — Volume for SQLite; same idea.
 

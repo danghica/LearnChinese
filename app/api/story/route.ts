@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { chat, type ChatMessage } from "@/lib/llm";
+import { chat, DEFAULT_CHAT_MODEL, type ChatMessage } from "@/lib/llm";
 import { segment } from "@/lib/segment";
-import { isJiebaFriendlySentence, isPrimarilyHanzi } from "@/lib/storyValidation";
+import { isJiebaFriendlySentence, isPrimarilyHanzi, mergeDialogueFragments } from "@/lib/storyValidation";
 
-const STORY_WORD_COUNT = 1500;
+/** Story generation plus translation batches can exceed default serverless timeouts. */
+export const maxDuration = 300;
+
+/** ~1100 words trims the dominant story-generation latency versus very long targets while keeping a substantial story. */
+const STORY_WORD_COUNT = 1100;
 const STORY_SYSTEM_PROMPT = `You are a story teller. Write a story using only HSK1, HSK2, and HSK3 grammar and vocabulary. The story must be approximately ${STORY_WORD_COUNT} Chinese words long (in total across all sentences).
 
 Output rules (strict):
@@ -20,9 +24,12 @@ function splitIntoSentences(text: string): string[] {
   return parts.map((s) => s.trim()).filter(Boolean);
 }
 
-const TRANSLATION_BATCH_SIZE = 8;
+/** Fewer round-trips; size stays within one JSON response with generous max_tokens. */
+const TRANSLATION_BATCH_SIZE = 24;
+/** Paid API: run many translation requests in parallel to minimize wall time. */
+const TRANSLATION_CONCURRENCY = 16;
 
-const TRANSLATION_SYSTEM = `You are a translator. You will receive several Chinese sentences. Reply with the English translation of each sentence, one per line, in the same order. Use exactly one line per sentence. No numbering, no quotes, no extra explanation.`;
+const TRANSLATION_SYSTEM_JSON = `You translate Chinese to English. Reply ONLY with a valid JSON array of strings: same length as the input list, each element the English translation of the matching Chinese sentence. No markdown code fences, no keys, no commentary—only the JSON array.`;
 
 /** Strip surrounding quotes if the model wrapped the translation. */
 function normalizeTranslation(raw: string): string {
@@ -50,6 +57,67 @@ function parseBatchTranslation(raw: string, expectedCount: number): string[] {
   return result;
 }
 
+/** Prefer strict JSON array from model (avoids paragraph replies that break line-based parsing). */
+function parseTranslationJsonArray(raw: string, expectedCount: number): string[] | null {
+  let s = raw.trim();
+  const fence = /^```(?:json)?\s*([\s\S]*?)```/im.exec(s);
+  if (fence) s = fence[1].trim();
+  const start = s.indexOf("[");
+  const end = s.lastIndexOf("]");
+  if (start === -1 || end <= start) return null;
+  try {
+    const parsed = JSON.parse(s.slice(start, end + 1)) as unknown;
+    if (!Array.isArray(parsed) || parsed.length !== expectedCount) return null;
+    const out: string[] = [];
+    for (const item of parsed) {
+      if (typeof item !== "string") return null;
+      const t = item.trim();
+      if (!t) return null;
+      out.push(t);
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+async function translateSentenceBatch(batch: string[]): Promise<string[]> {
+  const failAll = () => batch.map(() => "[Translation failed]");
+  const payload = JSON.stringify(batch);
+  const baseUser = `Translate each string in this JSON array from Chinese to English.
+
+Input (JSON array, ${batch.length} strings):
+${payload}
+
+Output: ONLY a JSON array of exactly ${batch.length} English strings in the same order. Use double quotes for JSON strings; escape any " inside a translation as \\".`;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const retryHint =
+        attempt === 1
+          ? `\n\nIMPORTANT: Your previous answer was not a valid JSON array of exactly ${batch.length} strings. Reply with nothing but that array.`
+          : "";
+      const rawTrans = await chat(
+        [
+          { role: "system" as const, content: TRANSLATION_SYSTEM_JSON },
+          { role: "user" as const, content: baseUser + retryHint },
+        ],
+        DEFAULT_CHAT_MODEL,
+        { max_tokens: 4096 }
+      );
+      if (!rawTrans?.trim()) continue;
+      const jsonParsed = parseTranslationJsonArray(rawTrans, batch.length);
+      if (jsonParsed) return jsonParsed;
+      const lineParsed = parseBatchTranslation(rawTrans, batch.length);
+      const failedLines = lineParsed.filter((t) => t === "[Translation failed]").length;
+      if (failedLines === 0) return lineParsed;
+    } catch (err) {
+      console.error("Translation batch failed:", err);
+    }
+  }
+  return failAll();
+}
+
 type StoryBlockOut = {
   chinese: string;
   english: string;
@@ -70,10 +138,9 @@ export async function POST(request: NextRequest) {
       { role: "user", content: userPrompt },
     ];
     const maxAttempts = 4;
-    const storyModel = "llama-3.1-8b-instant";
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      rawStory = await chat(messages, storyModel, { max_tokens: 8192 });
+      rawStory = await chat(messages, DEFAULT_CHAT_MODEL, { max_tokens: 6144 });
       const trimmed = rawStory?.trim() ?? "";
       if (trimmed && isPrimarilyHanzi(trimmed)) break;
       if (attempt < maxAttempts) {
@@ -83,7 +150,6 @@ export async function POST(request: NextRequest) {
           content:
             "Your last reply was not valid: it must be written entirely in Chinese characters (汉字), not Pinyin or English. Rewrite the complete story from the beginning with the same topic and length, using 汉字 for all Chinese words.",
         });
-        await new Promise((r) => setTimeout(r, 600 * attempt));
       }
     }
 
@@ -97,7 +163,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const sentences = splitIntoSentences(rawStory);
+    const sentences = mergeDialogueFragments(splitIntoSentences(rawStory));
     if (sentences.length === 0) {
       return NextResponse.json(
         { error: "Story generation returned no content. Please try again." },
@@ -105,23 +171,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const blocks: StoryBlockOut[] = [];
+    const batches: string[][] = [];
     for (let i = 0; i < sentences.length; i += TRANSLATION_BATCH_SIZE) {
-      const batch = sentences.slice(i, i + TRANSLATION_BATCH_SIZE);
-      const batchUserPrompt = `Translate the following Chinese sentences to English. Reply with exactly one English sentence per line, in the same order. No numbering.\n\n${batch.map((s, j) => `${j + 1}. ${s}`).join("\n")}`;
-      let translations: string[] = batch.map(() => "[Translation failed]");
-      try {
-        const transMessages = [
-          { role: "system" as const, content: TRANSLATION_SYSTEM },
-          { role: "user" as const, content: batchUserPrompt },
-        ];
-        const rawTrans = await chat(transMessages, storyModel, { max_tokens: 512 });
-        if (rawTrans?.trim()) {
-          translations = parseBatchTranslation(rawTrans, batch.length);
-        }
-      } catch (err) {
-        console.error("Translation batch failed:", err);
+      batches.push(sentences.slice(i, i + TRANSLATION_BATCH_SIZE));
+    }
+
+    const batchTranslations: string[][] = new Array(batches.length);
+    for (let w = 0; w < batches.length; w += TRANSLATION_CONCURRENCY) {
+      const wave = batches.slice(w, w + TRANSLATION_CONCURRENCY);
+      const waveIdxOffset = w;
+      const waveResults = await Promise.all(
+        wave.map((batch, wi) => translateSentenceBatch(batch).then((t) => ({ wi: waveIdxOffset + wi, t })))
+      );
+      for (const { wi, t } of waveResults) {
+        batchTranslations[wi] = t;
       }
+    }
+
+    const blocks: StoryBlockOut[] = [];
+    for (let b = 0; b < batches.length; b++) {
+      const batch = batches[b];
+      const translations = batchTranslations[b];
       for (let j = 0; j < batch.length; j++) {
         const chinese = batch[j];
         const chineseWords = isJiebaFriendlySentence(chinese)

@@ -1,11 +1,11 @@
 # Chinese vocabulary chat
 
-Single-user web app to practice Chinese with vocabulary-based conversations. The LLM (Groq) responds in Chinese using a selected vocabulary computed from a spaced-frequency algorithm over a word database.
+Single-user web app to practice Chinese with vocabulary-based conversations. The LLM ([DeepSeek](https://www.deepseek.com)) responds in Chinese using a selected vocabulary computed from a spaced-frequency algorithm over a word database.
 
 ## Setup
 
 1. Install dependencies: `npm install`
-2. Copy `.env.local.example` to `.env.local` and set `GROQ_API_KEY` (from [Groq console](https://console.groq.com)).
+2. Copy `.env.local.example` to `.env.local` and set `DEEPSEEK_API_KEY` (from [DeepSeek platform](https://platform.deepseek.com)).
 3. Seed the database: `npm run seed` (creates `data/app.sqlite` and populates words from `data/words-3000.json`).
 4. Run dev server: `npm run dev`
 5. Open [http://localhost:3000](http://localhost:3000).
@@ -35,7 +35,7 @@ The app uses **SQLite** and **native modules** (better-sqlite3, @node-rs/jieba),
 1. **Railway** (https://railway.app)  
    - Connect your GitHub repo.  
    - Add a **Volume** and mount it (e.g. `/data`).  
-   - Set env: `DATABASE_URL=/data/app.sqlite`, `GROQ_API_KEY=your_key`.  
+   - Set env: `DATABASE_URL=/data/app.sqlite`, `DEEPSEEK_API_KEY=your_key`.  
    - Build: `npm install && npm run build`.  
    - Start: `npm run start`.  
    - Run seed once (Railway CLI or one-off run): `npm run seed` (with `DATABASE_URL` set so the DB is on the volume).
@@ -43,14 +43,14 @@ The app uses **SQLite** and **native modules** (better-sqlite3, @node-rs/jieba),
 2. **Render** (https://render.com)  
    - New **Web Service** from repo.  
    - Add **Disk** (persistent), mount path e.g. `/data`.  
-   - Env: `DATABASE_URL=/data/app.sqlite`, `GROQ_API_KEY=your_key`.  
+   - Env: `DATABASE_URL=/data/app.sqlite`, `DEEPSEEK_API_KEY=your_key`.  
    - Build: `npm install && npm run build`.  
    - Start: `npm run start`.  
    - Run `npm run seed` once (e.g. via a one-off job or SSH) so the DB on the disk is seeded.
 
 3. **Fly.io** (https://fly.io)  
    - Use a **volume** for SQLite.  
-   - Set `DATABASE_URL` to a path on the volume, set `GROQ_API_KEY`.  
+   - Set `DATABASE_URL` to a path on the volume, set `DEEPSEEK_API_KEY`.  
    - Build and run Node; run `npm run seed` once after first deploy.
 
 **Not a good fit:** Vercel’s serverless (no persistent SQLite). To use Vercel you’d need to switch to a hosted DB (e.g. Turso, Neon) and avoid native addons in serverless.

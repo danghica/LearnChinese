@@ -1,20 +1,24 @@
-const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-/** Use Compound for built-in web search (same endpoint; model enables tools). */
-const DEFAULT_MODEL = "groq/compound-mini";
+const DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions";
+
+/** Default chat model (DeepSeek API). */
+export const DEFAULT_CHAT_MODEL = "deepseek-chat";
 
 export type ChatMessage = { role: "user" | "assistant" | "system"; content: string };
 
 export async function chat(
   messages: ChatMessage[],
-  model: string = DEFAULT_MODEL,
+  model: string = DEFAULT_CHAT_MODEL,
   options?: { max_tokens?: number }
 ): Promise<string> {
-  const apiKey = process.env.GROQ_API_KEY?.trim();
+  const apiKey = process.env.DEEPSEEK_API_KEY?.trim();
   if (!apiKey) {
-    throw new Error("GROQ_API_KEY is not set. Add it to .env.local (see .env.local.example). Get a key at https://console.groq.com");
+    throw new Error(
+      "DEEPSEEK_API_KEY is not set. Add it to .env.local (see .env.local.example). Get a key at https://platform.deepseek.com"
+    );
   }
-  const max_tokens = options?.max_tokens ?? 1024;
-  const res = await fetch(GROQ_API_URL, {
+  /** Paid-tier default; callers may pass a lower max_tokens for short turns. */
+  const max_tokens = options?.max_tokens ?? 4096;
+  const res = await fetch(DEEPSEEK_API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -30,12 +34,12 @@ export async function chat(
     const err = await res.text();
     if (res.status === 401) {
       throw new Error(
-        "Invalid Groq API key. Check GROQ_API_KEY in .env.local and get a valid key at https://console.groq.com"
+        "Invalid DeepSeek API key. Check DEEPSEEK_API_KEY in .env.local and get a valid key at https://platform.deepseek.com"
       );
     }
-    throw new Error(`Groq API error: ${res.status} ${err}`);
+    throw new Error(`DeepSeek API error: ${res.status} ${err}`);
   }
-  const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+  const data = (await res.json()) as { choices?: { message?: { content?: string | null } }[] };
   const content = data.choices?.[0]?.message?.content ?? "";
   return content;
 }
