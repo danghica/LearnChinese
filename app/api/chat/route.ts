@@ -33,7 +33,7 @@ function buildSystemPrompt(vocabList: string[], topic: string | null, isNew: boo
     `${STANDING_PROMPT}\n\nYou are continuing a conversation. For each user message you must do TWO things in order:\n\n` +
     `1. First, evaluate the user's answer for correctness. Output this evaluation clearly using English ` +
     `(e.g. whether their answer is correct or incorrect, what was wrong or what was good, brief feedback).\n\n` +
-    `2. Then, respond conversationally in Chinese: continue the dialogue, ask a follow-up question, or test comprehension of what was said so far. ` +
+    `2. Then, respond conversationally in Chinese: continue the dialogue by providing new relevant information on the topic using the specified vocabulary, then ask a single follow-up question which tests comprehension of what was said so far and invites further discussion. ` +
     `Use the vocabulary list below; strongly prefer it whenever possible, and you may use any HSK1, HSK2, or HSK3 vocabulary as needed.\n\n` +
     `When you correct the user's answer, at the END of your message add a JSON block on a new line with the list of Chinese words they used incorrectly, e.g.:\n` +
     `{"misused_words": ["词1", "词2"]}\nIf no words were misused, use: {"misused_words": []}\n\n` +
