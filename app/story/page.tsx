@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useWakeLockWhilePlaying } from "@/hooks/useWakeLockWhilePlaying";
 import WordLookupNote from "@/components/WordLookupNote";
 import { parseWordsApiErrorResponse } from "@/lib/parseWordsApiError";
 import { getChineseVoice } from "@/lib/speech";
@@ -36,6 +37,7 @@ export default function StoryPage() {
   const [wordLookup, setWordLookup] = useState<Record<string, { pinyin: string; english_translation: string }>>({});
   const [lookupNote, setLookupNote] = useState<{ word: string; pinyin: string; english_translation: string } | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  useWakeLockWhilePlaying(isPlaying);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

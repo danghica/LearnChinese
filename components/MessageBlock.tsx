@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
+import { useWakeLockWhilePlaying } from "@/hooks/useWakeLockWhilePlaying";
 import { getChineseVoice } from "@/lib/speech";
 
 type SegmentInput = { word: string; inVocabulary?: boolean } | string;
@@ -32,6 +33,7 @@ const StopIcon = () => (
 
 export default function MessageBlock({ role, content, segments, wordLookup, onWordClick }: Props) {
   const [isPlaying, setIsPlaying] = useState(false);
+  useWakeLockWhilePlaying(isPlaying);
   const isUser = role === "user";
   const normalizedSegments =
     segments?.map((s) => normalizeSegment(s as SegmentInput)) ?? [];
