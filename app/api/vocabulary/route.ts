@@ -4,10 +4,11 @@ import { getWordByWord, getUsageHistoryForWord } from "@/lib/words";
 
 const TOP_WORDS = 300;
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const debugParam = searchParams.get("debug");
+    const debugParam = request.nextUrl.searchParams.get("debug");
     const debug =
       debugParam === "true" || debugParam === "1" || debugParam === "yes";
 
