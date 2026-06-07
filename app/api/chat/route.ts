@@ -41,6 +41,36 @@ function buildSystemPrompt(vocabList: string[], topic: string | null, isNew: boo
   );
 }
 
+function buildStorySystemPrompt(vocabList: string[], storyContext: string, topic: string | null, isNew: boolean): string {
+  const vocabBlock = vocabList.length
+    ? `Vocabulary to use: ${vocabList.join(", ")}.\n\n${VOCAB_INSTRUCTION}`
+    : `You may use any HSK1, HSK2, or HSK3 vocabulary.`;
+  const topicPart = topic && topic.trim()
+    ? `The story topic or theme was: "${topic}".`
+    : "";
+  const storyBlock = `The user has just read this story:\n\n${storyContext}\n\n`;
+  if (isNew) {
+    return (
+      `${STANDING_PROMPT}\n\n${storyBlock}${topicPart}\n\n` +
+      `The user wants to discuss this story. Reply in Chinese. Respond to their message about the story and ask a comprehension question ` +
+      `(about plot, characters, or vocabulary from the story). Use the vocabulary list below; strongly prefer it whenever possible.\n\n` +
+      `${vocabBlock}\n\nRespond in Chinese only.`
+    );
+  }
+  return (
+    `${STANDING_PROMPT}\n\n${storyBlock}${topicPart}\n\n` +
+    `You are continuing a conversation about the story above. For each user message you must do TWO things in order:\n\n` +
+    `1. First, evaluate the user's answer for correctness. Output this evaluation clearly using English ` +
+    `(e.g. whether their answer is correct or incorrect, what was wrong or what was good, brief feedback).\n\n` +
+    `2. Then, respond conversationally in Chinese: continue discussing the story, then ask a single follow-up comprehension question ` +
+    `(about plot, characters, or vocabulary from the story). Use the vocabulary list below; strongly prefer it whenever possible, ` +
+    `and you may use any HSK1, HSK2, or HSK3 vocabulary as needed.\n\n` +
+    `When you correct the user's answer, at the END of your message add a JSON block on a new line with the list of Chinese words they used incorrectly, e.g.:\n` +
+    `{"misused_words": ["词1", "词2"]}\nIf no words were misused, use: {"misused_words": []}\n\n` +
+    `${vocabBlock}\n\nRespond in Chinese.`
+  );
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -49,14 +79,18 @@ export async function POST(request: NextRequest) {
       conversationId: rawConvId,
       newWordsPerConversation = 10,
       topic: topicParam,
+      storyContext: storyContextParam,
       debug: debugMode = false,
     } = body as {
       messages?: { role: string; content: string }[];
       conversationId?: string | null;
       newWordsPerConversation?: number;
       topic?: string | null;
+      storyContext?: string | null;
       debug?: boolean;
     };
+    const storyContext =
+      typeof storyContextParam === "string" && storyContextParam.trim() ? storyContextParam.trim() : null;
     type LlmCall = { sent: { role: string; content: string }[]; received: string };
     const llmCalls: LlmCall[] = [];
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -85,14 +119,21 @@ export async function POST(request: NextRequest) {
       const ackReceived = await chat(ackMessages);
       if (debugMode) llmCalls.push({ sent: ackMessages, received: ackReceived });
       // Proceed to call 2 even if acknowledgment was not exact (per plan: do not block).
-      const conversationId = createConversation(topicParam ?? "general conversation");
-      const topic = topicParam ?? "general conversation";
+      const defaultTopic = storyContext ? "story discussion" : "general conversation";
+      const conversationId = createConversation(topicParam ?? defaultTopic);
+      const topic = topicParam ?? defaultTopic;
       const firstContent = (lastMessage.content || "").trim();
       const isPlaceholder =
         firstContent.length === 0 || /^(start|begin|go|hi|hello|start conversation)$/i.test(firstContent);
-      const promptForLlm = isPlaceholder ? "discuss a random topic" : firstContent;
+      const promptForLlm = storyContext
+        ? firstContent || "Let's discuss the story."
+        : isPlaceholder
+          ? "discuss a random topic"
+          : firstContent;
       const storedUserContent = firstContent.length > 0 ? firstContent : lastMessage.content || "";
-      const systemPrompt = buildSystemPrompt(vocabList, topic, true);
+      const systemPrompt = storyContext
+        ? buildStorySystemPrompt(vocabList, storyContext, topic, true)
+        : buildSystemPrompt(vocabList, topic, true);
       const firstReplyMessages = [
         { role: "system" as const, content: systemPrompt },
         { role: "user" as const, content: promptForLlm },
@@ -119,10 +160,10 @@ export async function POST(request: NextRequest) {
     if (existingConv) {
       conversationId = convId!;
     } else {
-      conversationId = createConversation(topicParam ?? "general conversation");
+      conversationId = createConversation(topicParam ?? (storyContext ? "story discussion" : "general conversation"));
     }
     const current = getConversationById(conversationId);
-    const topic = current?.topic ?? topicParam ?? "general conversation";
+    const topic = current?.topic ?? topicParam ?? (storyContext ? "story discussion" : "general conversation");
     let recordedAllCorrect = false;
 
     if (messages.length >= 2) {
@@ -149,7 +190,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const systemPrompt = buildSystemPrompt(vocabList, topic, false);
+    const systemPrompt = storyContext
+      ? buildStorySystemPrompt(vocabList, storyContext, topic, false)
+      : buildSystemPrompt(vocabList, topic, false);
     const userMessages = messages.map((m: { role: string; content: string }) => ({
       role: m.role as "user" | "assistant",
       content: m.content,

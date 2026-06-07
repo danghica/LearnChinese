@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import MessageBlock from "./MessageBlock";
 import WordLookupNote from "./WordLookupNote";
 import { parseWordsApiErrorResponse } from "@/lib/parseWordsApiError";
-
-const STORY_STORAGE_KEY = "story-content";
+import { STORY_STORAGE_KEY } from "@/lib/storyStorage";
 
 export type SegmentItem = { word: string; inVocabulary?: boolean };
 
@@ -26,12 +25,17 @@ export type TrafficLogEntry = {
 
 const MAX_TRAFFIC_LOG = 20;
 
+type HeaderContentContext = { onWordClick: (word: string) => void };
+
 type Props = {
   initialMessages: Message[];
   conversationId: string | null;
   newWordsPerConversation: number;
   topic?: string;
   debugMode?: boolean;
+  storyContext?: string;
+  headerContent?: React.ReactNode | ((ctx: HeaderContentContext) => React.ReactNode);
+  variant?: "home" | "story";
 };
 
 export default function ChatView({
@@ -40,7 +44,11 @@ export default function ChatView({
   newWordsPerConversation,
   topic,
   debugMode = false,
+  storyContext,
+  headerContent,
+  variant = "home",
 }: Props) {
+  const isStoryMode = variant === "story";
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [convId, setConvId] = useState<string | null>(conversationId);
   const [input, setInput] = useState("");
@@ -71,7 +79,14 @@ export default function ChatView({
   }, []);
 
   const sendRequest = useCallback(
-    async (requestBody: { messages: { role: string; content: string }[]; conversationId: string | null; newWordsPerConversation: number; topic?: string; debug?: boolean }) => {
+    async (requestBody: {
+      messages: { role: string; content: string }[];
+      conversationId: string | null;
+      newWordsPerConversation: number;
+      topic?: string;
+      storyContext?: string;
+      debug?: boolean;
+    }) => {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -123,21 +138,33 @@ export default function ChatView({
     }
   }, [input, loading, newWordsPerConversation, sendRequest]);
 
+  const canSendMessage = useCallback(() => {
+    if (!input.trim() || loading) return false;
+    const hasOngoingConversation = convId != null && messages.length > 0;
+    if (storyContext) {
+      return messages.length === 0 || hasOngoingConversation;
+    }
+    return hasOngoingConversation;
+  }, [input, loading, convId, messages.length, storyContext]);
+
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       const text = input.trim();
-      const hasOngoingConversation = convId != null && messages.length > 0;
-      if (!text || loading || !hasOngoingConversation) return;
+      if (!canSendMessage()) return;
       setInput("");
       setLookupNote(null);
       setLoading(true);
       setError(null);
+      const isFirstStoryMessage = !!storyContext && convId == null && messages.length === 0;
       const body = {
-        messages: [...messages.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: text }],
-        conversationId: convId,
+        messages: isFirstStoryMessage
+          ? [{ role: "user", content: text }]
+          : [...messages.map((m) => ({ role: m.role, content: m.content })), { role: "user", content: text }],
+        conversationId: isFirstStoryMessage ? null : convId,
         newWordsPerConversation,
         topic,
+        ...(storyContext ? { storyContext } : {}),
         debug: debugMode,
       };
       try {
@@ -149,7 +176,14 @@ export default function ChatView({
           content: data.content,
           segments: data.segments?.map((s: { word: string; inVocabulary?: boolean }) => ({ word: s.word, inVocabulary: s.inVocabulary })) ?? undefined,
         };
-        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", content: text }, assistantMsg]);
+        if (isFirstStoryMessage) {
+          setMessages([
+            { id: crypto.randomUUID(), role: "user", content: text },
+            assistantMsg,
+          ]);
+        } else {
+          setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", content: text }, assistantMsg]);
+        }
         if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong");
@@ -157,7 +191,7 @@ export default function ChatView({
         setLoading(false);
       }
     },
-    [input, loading, messages, convId, newWordsPerConversation, topic, sendRequest]
+    [canSendMessage, messages, convId, newWordsPerConversation, topic, storyContext, debugMode, sendRequest]
   );
 
   const handleStory = useCallback(async () => {
@@ -180,7 +214,10 @@ export default function ChatView({
       }
       if (!res.ok) throw new Error(data.error || "Request failed");
       if (typeof window !== "undefined" && data?.blocks) {
-        window.sessionStorage.setItem(STORY_STORAGE_KEY, JSON.stringify(data));
+        window.sessionStorage.setItem(
+          STORY_STORAGE_KEY,
+          JSON.stringify({ blocks: data.blocks, topic: topic || undefined })
+        );
         router.push("/story");
       }
     } catch (err) {
@@ -253,11 +290,19 @@ export default function ChatView({
     }
   }, [wordLookup]);
 
+  const renderedHeaderContent =
+    headerContent == null
+      ? null
+      : typeof headerContent === "function"
+        ? headerContent({ onWordClick: handleWordClick })
+        : headerContent;
+
   return (
     <div className="flex flex-col flex-1 min-h-0 max-w-3xl mx-auto w-full">
       {/* Output text box: read-only area showing assistant (and optionally thread) output */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-1 min-h-0">
-        {messages.length === 0 && !loading && (
+        {renderedHeaderContent}
+        {messages.length === 0 && !loading && !isStoryMode && (
           <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 text-sm text-gray-700 space-y-2">
             <p className="font-medium text-blue-900">How it works</p>
             <ul className="list-disc list-inside space-y-1 text-gray-600">
@@ -266,6 +311,11 @@ export default function ChatView({
               <li><strong>Send</strong> is enabled only after a conversation has started; use it for follow-up replies.</li>
               <li>Your sentences are checked for correctness; correct word use is recorded for practice.</li>
             </ul>
+          </div>
+        )}
+        {messages.length === 0 && !loading && isStoryMode && (
+          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 text-sm text-gray-700">
+            <p>Send a message to start discussing the story.</p>
           </div>
         )}
         {messages.map((m) => (
@@ -302,8 +352,7 @@ export default function ChatView({
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                const hasOngoingConversation = convId != null && messages.length > 0;
-                if (input.trim() && !loading && hasOngoingConversation) {
+                if (canSendMessage()) {
                   const form = e.currentTarget.form;
                   if (form) form.requestSubmit();
                 }
@@ -317,27 +366,31 @@ export default function ChatView({
           <div className="flex gap-2">
             <button
               type="submit"
-              disabled={loading || !input.trim() || !convId || messages.length === 0}
+              disabled={!canSendMessage()}
               className="py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Send
             </button>
-            <button
-              type="button"
-              onClick={handleNextChat}
-              disabled={loading}
-              className="py-2 px-4 bg-gray-600 text-white rounded-md hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Next chat
-            </button>
-            <button
-              type="button"
-              onClick={handleStory}
-              disabled={loading}
-              className="py-2 px-4 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Story
-            </button>
+            {!isStoryMode && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleNextChat}
+                  disabled={loading}
+                  className="py-2 px-4 bg-gray-600 text-white rounded-md hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next chat
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStory}
+                  disabled={loading}
+                  className="py-2 px-4 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Story
+                </button>
+              </>
+            )}
           </div>
         </div>
       </form>
@@ -351,7 +404,9 @@ export default function ChatView({
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-3 text-xs font-mono whitespace-pre-wrap break-words">
             {trafficLog.length === 0 && (
-              <p className="text-gray-500">No requests yet. Send a message or click Next chat.</p>
+              <p className="text-gray-500">
+                {isStoryMode ? "No requests yet. Send a message to discuss the story." : "No requests yet. Send a message or click Next chat."}
+              </p>
             )}
             {trafficLog.map((entry) => {
               const resBody = entry.response.body as { llm_calls?: { sent: { role: string; content: string }[]; received: string }[] };

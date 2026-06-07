@@ -3,18 +3,30 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useWakeLockWhilePlaying } from "@/hooks/useWakeLockWhilePlaying";
-import WordLookupNote from "@/components/WordLookupNote";
-import { parseWordsApiErrorResponse } from "@/lib/parseWordsApiError";
+import ChatView from "@/components/ChatView";
+import StoryArticle from "@/components/StoryArticle";
 import { getChineseVoice } from "@/lib/speech";
+import {
+  STORY_STORAGE_KEY,
+  parseStoryStorage,
+  type StoryBlock,
+} from "@/lib/storyStorage";
 
-const STORY_STORAGE_KEY = "story-content";
+const NEW_WORDS_KEY = "chinese-vocab-newWordsPerConversation";
+const DEBUG_MODE_KEY = "chinese-vocab-debugMode";
+const DEFAULT_NEW_WORDS = 10;
 
-type StoryBlock = {
-  chinese: string;
-  english: string;
-  chineseComma: string;
-  chineseWords: string[];
-};
+function getStoredNewWords(): number {
+  if (typeof window === "undefined") return DEFAULT_NEW_WORDS;
+  const v = localStorage.getItem(NEW_WORDS_KEY);
+  const n = parseInt(v ?? "", 10);
+  return Number.isNaN(n) ? DEFAULT_NEW_WORDS : Math.max(1, Math.min(50, n));
+}
+
+function getStoredDebugMode(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(DEBUG_MODE_KEY) === "true";
+}
 
 function SoundIcon() {
   return (
@@ -34,92 +46,24 @@ function StopIcon() {
 
 export default function StoryPage() {
   const [blocks, setBlocks] = useState<StoryBlock[] | null>(null);
-  const [wordLookup, setWordLookup] = useState<Record<string, { pinyin: string; english_translation: string }>>({});
-  const [lookupNote, setLookupNote] = useState<{ word: string; pinyin: string; english_translation: string } | null>(null);
+  const [storyTopic, setStoryTopic] = useState<string | undefined>(undefined);
+  const [newWordsPerConversation, setNewWordsPerConversation] = useState(DEFAULT_NEW_WORDS);
+  const [debugMode, setDebugMode] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   useWakeLockWhilePlaying(isPlaying);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    try {
-      const raw = window.sessionStorage.getItem(STORY_STORAGE_KEY);
-      if (!raw) {
-        setBlocks(null);
-        return;
-      }
-      const data = JSON.parse(raw) as { blocks?: StoryBlock[] };
-      if (!Array.isArray(data?.blocks) || data.blocks.length === 0) {
-        setBlocks(null);
-        return;
-      }
-      setBlocks(data.blocks);
-    } catch {
+    setNewWordsPerConversation(getStoredNewWords());
+    setDebugMode(getStoredDebugMode());
+    const data = parseStoryStorage(window.sessionStorage.getItem(STORY_STORAGE_KEY));
+    if (!data) {
       setBlocks(null);
-    }
-  }, []);
-
-  const handleWordClick = useCallback(async (word: string) => {
-    const cached = wordLookup[word];
-    if (cached) {
-      setLookupNote({ word, ...cached });
       return;
     }
-    try {
-      let res = await fetch(`/api/words?word=${encodeURIComponent(word)}`);
-      if (res.status !== 404 && !res.ok) {
-        const errMsg = await parseWordsApiErrorResponse(res);
-        setLookupNote({ word, pinyin: "", english_translation: errMsg });
-        return;
-      }
-      if (res.status === 404) {
-        setLookupNote({ word, pinyin: "", english_translation: "Looking up…" });
-        const addRes = await fetch("/api/words", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ word }),
-        });
-        if (addRes.status !== 200 && addRes.status !== 201) {
-          let errorText = "Not in vocabulary";
-          try {
-            const errBody = await addRes.clone().json();
-            if (errBody?.details) errorText = errBody.details;
-            else if (errBody?.error) errorText = errBody.error;
-          } catch {
-            // ignore
-          }
-          setLookupNote({ word, pinyin: "", english_translation: errorText });
-          return;
-        }
-        res = addRes;
-      }
-      const data = (await res.json()) as {
-        id?: number;
-        pinyin?: string;
-        english_translation?: string;
-        words?: unknown;
-      };
-      if (Array.isArray(data.words) || typeof data.pinyin !== "string" || typeof data.english_translation !== "string") {
-        setLookupNote({
-          word,
-          pinyin: "",
-          english_translation: "Word lookup returned an unexpected response.",
-        });
-        return;
-      }
-      const info = { pinyin: data.pinyin, english_translation: data.english_translation };
-      setWordLookup((prev) => ({ ...prev, [word]: info }));
-      setLookupNote({ word, ...info });
-      if (typeof data.id === "number") {
-        await fetch("/api/usage", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wordId: data.id, correct: false }),
-        });
-      }
-    } catch {
-      setLookupNote({ word, pinyin: "", english_translation: "Lookup failed" });
-    }
-  }, [wordLookup]);
+    setBlocks(data.blocks);
+    setStoryTopic(data.topic);
+  }, []);
 
   const handleReadClick = useCallback(async () => {
     if (typeof window === "undefined" || !window.speechSynthesis || !blocks?.length) return;
@@ -136,7 +80,6 @@ export default function StoryPage() {
         uEn.lang = "en";
         utterances.push(uEn);
       }
-      // Same string as on-screen segmented row: "token1, token2, …"
       const segmented =
         b.chineseComma
           ?.split(",")
@@ -175,9 +118,11 @@ export default function StoryPage() {
     );
   }
 
+  const storyContext = blocks.map((b) => b.chinese).join("\n");
+
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 p-6 max-w-2xl mx-auto">
-      <header className="flex flex-wrap items-center gap-3 mb-6">
+    <main className="bg-gray-50 text-gray-900 flex flex-col h-[100dvh] min-h-0">
+      <header className="flex flex-wrap items-center gap-3 px-4 py-2 border-b bg-white shrink-0 max-w-3xl mx-auto w-full">
         <Link href="/" className="text-blue-600 hover:underline text-sm">
           Back to chat
         </Link>
@@ -192,41 +137,18 @@ export default function StoryPage() {
           <span>{isPlaying ? "Stop" : "Read"}</span>
         </button>
       </header>
-
-      {lookupNote && (
-        <WordLookupNote
-          word={lookupNote.word}
-          pinyin={lookupNote.pinyin}
-          english_translation={lookupNote.english_translation}
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+        <ChatView
+          initialMessages={[]}
+          conversationId={null}
+          newWordsPerConversation={newWordsPerConversation}
+          topic={storyTopic}
+          debugMode={debugMode}
+          storyContext={storyContext}
+          variant="story"
+          headerContent={({ onWordClick }) => <StoryArticle blocks={blocks} onWordClick={onWordClick} />}
         />
-      )}
-
-      <article className="space-y-6">
-        {blocks.map((block, idx) => (
-          <div key={idx} className="space-y-2">
-            <p className="text-gray-600 italic">{block.english}</p>
-            <p className="text-gray-700 text-sm">
-              {block.chineseComma
-                .split(",")
-                .map((w) => w.trim())
-                .filter(Boolean)
-                .map((token, i, arr) => (
-                  <span key={i}>
-                    <button
-                      type="button"
-                      onClick={() => handleWordClick(token)}
-                      className="border-b border-dotted border-gray-400 hover:bg-gray-200 cursor-pointer mx-0.5 px-0.5"
-                    >
-                      {token}
-                    </button>
-                    {i < arr.length - 1 ? ", " : null}
-                  </span>
-                ))}
-            </p>
-            <p className="text-lg text-gray-900">{block.chinese}</p>
-          </div>
-        ))}
-      </article>
-    </div>
+      </div>
+    </main>
   );
 }
