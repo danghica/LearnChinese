@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useWakeLockWhilePlaying } from "@/hooks/useWakeLockWhilePlaying";
 import ChatView from "@/components/ChatView";
 import StoryArticle from "@/components/StoryArticle";
@@ -44,18 +45,47 @@ function StopIcon() {
   );
 }
 
-export default function StoryPage() {
+function StoryPageContent() {
+  const searchParams = useSearchParams();
+  const storyIdParam = searchParams.get("id");
   const [blocks, setBlocks] = useState<StoryBlock[] | null>(null);
   const [storyTopic, setStoryTopic] = useState<string | undefined>(undefined);
   const [newWordsPerConversation, setNewWordsPerConversation] = useState(DEFAULT_NEW_WORDS);
   const [debugMode, setDebugMode] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [loading, setLoading] = useState(!!storyIdParam);
+  const [loadError, setLoadError] = useState<string | null>(null);
   useWakeLockWhilePlaying(isPlaying);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     setNewWordsPerConversation(getStoredNewWords());
     setDebugMode(getStoredDebugMode());
+
+    const id = storyIdParam ? parseInt(storyIdParam, 10) : NaN;
+    if (storyIdParam && !Number.isNaN(id) && id > 0) {
+      setLoading(true);
+      setLoadError(null);
+      fetch(`/api/stories/${id}`)
+        .then(async (res) => {
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || "Story not found");
+          }
+          return res.json();
+        })
+        .then((data: { blocks: StoryBlock[]; topic?: string | null }) => {
+          setBlocks(data.blocks);
+          setStoryTopic(typeof data.topic === "string" ? data.topic : undefined);
+        })
+        .catch((err) => {
+          setBlocks(null);
+          setLoadError(err instanceof Error ? err.message : "Failed to load story");
+        })
+        .finally(() => setLoading(false));
+      return;
+    }
+
     const data = parseStoryStorage(window.sessionStorage.getItem(STORY_STORAGE_KEY));
     if (!data) {
       setBlocks(null);
@@ -63,7 +93,8 @@ export default function StoryPage() {
     }
     setBlocks(data.blocks);
     setStoryTopic(data.topic);
-  }, []);
+    setLoading(false);
+  }, [storyIdParam]);
 
   const handleReadClick = useCallback(async () => {
     if (typeof window === "undefined" || !window.speechSynthesis || !blocks?.length) return;
@@ -107,13 +138,26 @@ export default function StoryPage() {
     setIsPlaying(true);
   }, [blocks]);
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6 flex flex-col items-center justify-center">
+        <p className="text-gray-600">Loading story…</p>
+      </div>
+    );
+  }
+
   if (blocks === null) {
     return (
       <div className="min-h-screen bg-gray-50 p-6 flex flex-col items-center justify-center">
-        <p className="text-gray-600 mb-4">No story loaded.</p>
-        <Link href="/" className="text-blue-600 hover:underline">
-          Back to chat
-        </Link>
+        <p className="text-gray-600 mb-4">{loadError || "No story loaded."}</p>
+        <div className="flex gap-4 text-sm">
+          <Link href="/stories" className="text-blue-600 hover:underline">
+            All stories
+          </Link>
+          <Link href="/" className="text-blue-600 hover:underline">
+            Back to chat
+          </Link>
+        </div>
       </div>
     );
   }
@@ -125,6 +169,9 @@ export default function StoryPage() {
       <header className="flex flex-wrap items-center gap-3 px-4 py-2 border-b bg-white shrink-0 max-w-3xl mx-auto w-full">
         <Link href="/" className="text-blue-600 hover:underline text-sm">
           Back to chat
+        </Link>
+        <Link href="/stories" className="text-blue-600 hover:underline text-sm">
+          All stories
         </Link>
         <button
           type="button"
@@ -150,5 +197,13 @@ export default function StoryPage() {
         />
       </div>
     </main>
+  );
+}
+
+export default function StoryPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 p-6 text-gray-600">Loading…</div>}>
+      <StoryPageContent />
+    </Suspense>
   );
 }

@@ -64,6 +64,14 @@ function initSchema(database: Database.Database) {
       FOREIGN KEY (conversation_id) REFERENCES conversations(id)
     );
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
+
+    CREATE TABLE IF NOT EXISTS stories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      topic TEXT,
+      blocks_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_stories_created_at ON stories(created_at DESC);
   `);
 }
 
@@ -98,5 +106,12 @@ export type Message = {
   conversation_id: number;
   role: "user" | "assistant";
   content: string;
+  created_at: string;
+};
+
+export type Story = {
+  id: number;
+  topic: string | null;
+  blocks_json: string;
   created_at: string;
 };

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { chat, DEFAULT_CHAT_MODEL, type ChatMessage } from "@/lib/llm";
 import { segment } from "@/lib/segment";
 import { isJiebaFriendlySentence, isPrimarilyHanzi, mergeDialogueFragments } from "@/lib/storyValidation";
+import { saveStory } from "@/lib/stories";
 
 /** Story generation plus translation batches can exceed default serverless timeouts. */
 export const maxDuration = 300;
@@ -207,7 +208,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ blocks });
+    const id = saveStory(topic || null, blocks);
+
+    return NextResponse.json({ blocks, id, topic: topic || undefined });
   } catch (e) {
     console.error(e);
     const message = e instanceof Error ? e.message : "Internal server error";

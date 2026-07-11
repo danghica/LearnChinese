@@ -9,3 +9,6 @@
 | [app/api/words/[id]/route.ts](../app/api/words/[id]/route.ts) | GET | Word by id. |
 | [app/api/usage/route.ts](../app/api/usage/route.ts) | POST | Record usage (wordId, correct). |
 | [app/api/vocabulary/route.ts](../app/api/vocabulary/route.ts) | GET | Current working vocabulary (same algorithm as chat). Query: `newWordsPerConversation` (default 10), `debug` (default false). If `debug=false`: returns `{ vocabulary: string[] }`. If `debug=true`: returns `{ vocabulary: Array<{ id, word, frequency, pinyin, english_translation, created_at?, usage: { timestamp, correct }[] }> }`. Used by the /vocabulary page (opened from Settings). |
+| [app/api/story/route.ts](../app/api/story/route.ts) | POST | Generate a bilingual story: Body `{ topic?: string }`. Returns `{ blocks, id, topic? }` where each block has `chinese`, `english`, `chineseComma`, `chineseWords`. Saves the story to SQLite automatically. |
+| [app/api/stories/route.ts](../app/api/stories/route.ts) | GET | List saved stories. Params: `limit` (default 50), `offset` (default 0). Returns `{ stories: Array<{ id, topic, created_at, preview }>, total }`. Used by /stories page. |
+| [app/api/stories/[id]/route.ts](../app/api/stories/[id]/route.ts) | GET | Full saved story by id: `{ id, topic, blocks, created_at }` or 404. Used when opening `/story?id=N`. |

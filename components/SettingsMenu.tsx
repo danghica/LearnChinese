@@ -58,6 +58,9 @@ export default function SettingsMenu({
         >
           Inspect word database
         </a>
+        <a href="/stories" className="block text-sm text-blue-600 hover:underline">
+          All stories
+        </a>
       </div>
     </div>
   );

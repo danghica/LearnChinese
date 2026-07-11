@@ -206,7 +206,7 @@ export default function ChatView({
         body: JSON.stringify({ topic }),
       });
       const resText = await res.text();
-      let data: { error?: string; blocks?: unknown[] };
+      let data: { error?: string; blocks?: unknown[]; id?: number };
       try {
         data = resText ? JSON.parse(resText) : {};
       } catch (parseErr) {
@@ -216,7 +216,11 @@ export default function ChatView({
       if (typeof window !== "undefined" && data?.blocks) {
         window.sessionStorage.setItem(
           STORY_STORAGE_KEY,
-          JSON.stringify({ blocks: data.blocks, topic: topic || undefined })
+          JSON.stringify({
+            blocks: data.blocks,
+            topic: topic || undefined,
+            id: typeof data.id === "number" ? data.id : undefined,
+          })
         );
         router.push("/story");
       }
