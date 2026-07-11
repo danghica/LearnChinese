@@ -12,6 +12,12 @@ import {
   parseStoryStorage,
   type StoryBlock,
 } from "@/lib/storyStorage";
+import {
+  buildStoryDownloadFilename,
+  buildStoryDownloadText,
+  downloadStoryText,
+  type StoryDownloadLang,
+} from "@/lib/storyDownload";
 
 const NEW_WORDS_KEY = "chinese-vocab-newWordsPerConversation";
 const DEBUG_MODE_KEY = "chinese-vocab-debugMode";
@@ -50,11 +56,13 @@ function StoryPageContent() {
   const storyIdParam = searchParams.get("id");
   const [blocks, setBlocks] = useState<StoryBlock[] | null>(null);
   const [storyTopic, setStoryTopic] = useState<string | undefined>(undefined);
+  const [storyId, setStoryId] = useState<number | undefined>(undefined);
   const [newWordsPerConversation, setNewWordsPerConversation] = useState(DEFAULT_NEW_WORDS);
   const [debugMode, setDebugMode] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [loading, setLoading] = useState(!!storyIdParam);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [vocabDownloading, setVocabDownloading] = useState(false);
   useWakeLockWhilePlaying(isPlaying);
 
   useEffect(() => {
@@ -74,9 +82,10 @@ function StoryPageContent() {
           }
           return res.json();
         })
-        .then((data: { blocks: StoryBlock[]; topic?: string | null }) => {
+        .then((data: { blocks: StoryBlock[]; topic?: string | null; id?: number }) => {
           setBlocks(data.blocks);
           setStoryTopic(typeof data.topic === "string" ? data.topic : undefined);
+          setStoryId(id);
         })
         .catch((err) => {
           setBlocks(null);
@@ -93,6 +102,7 @@ function StoryPageContent() {
     }
     setBlocks(data.blocks);
     setStoryTopic(data.topic);
+    setStoryId(data.id);
     setLoading(false);
   }, [storyIdParam]);
 
@@ -138,6 +148,41 @@ function StoryPageContent() {
     setIsPlaying(true);
   }, [blocks]);
 
+  const handleDownload = useCallback(
+    (lang: Exclude<StoryDownloadLang, "vocabulary">) => {
+      if (!blocks?.length) return;
+      const text = buildStoryDownloadText(blocks, lang);
+      if (!text) return;
+      const filename = buildStoryDownloadFilename(storyTopic, lang, storyId);
+      downloadStoryText(text, filename);
+    },
+    [blocks, storyTopic, storyId]
+  );
+
+  const handleDownloadVocabulary = useCallback(async () => {
+    if (!blocks?.length || vocabDownloading) return;
+    setVocabDownloading(true);
+    try {
+      const res = await fetch("/api/story/vocabulary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blocks }),
+      });
+      const data = (await res.json()) as { error?: string; text?: string; count?: number };
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      if (!data.count) {
+        window.alert("No vocabulary outside HSK 1–4 in this story.");
+        return;
+      }
+      const filename = buildStoryDownloadFilename(storyTopic, "vocabulary", storyId);
+      downloadStoryText(data.text ?? "", filename);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to download vocabulary");
+    } finally {
+      setVocabDownloading(false);
+    }
+  }, [blocks, storyTopic, storyId, vocabDownloading]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 p-6 flex flex-col items-center justify-center">
@@ -173,16 +218,40 @@ function StoryPageContent() {
         <Link href="/stories" className="text-blue-600 hover:underline text-sm">
           All stories
         </Link>
-        <button
-          type="button"
-          onClick={handleReadClick}
-          aria-label={isPlaying ? "Stop playback" : "Read aloud"}
-          className="ml-auto flex items-center gap-2 py-2 px-4 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          title={isPlaying ? "Stop playback" : "Read aloud"}
-        >
-          {isPlaying ? <StopIcon /> : <SoundIcon />}
-          <span>{isPlaying ? "Stop" : "Read"}</span>
-        </button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleDownload("english")}
+            className="py-2 px-3 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400"
+          >
+            Download English
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDownload("chinese")}
+            className="py-2 px-3 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400"
+          >
+            Download Chinese
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadVocabulary}
+            disabled={vocabDownloading}
+            className="py-2 px-3 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {vocabDownloading ? "Downloading…" : "Download Vocabulary"}
+          </button>
+          <button
+            type="button"
+            onClick={handleReadClick}
+            aria-label={isPlaying ? "Stop playback" : "Read aloud"}
+            className="flex items-center gap-2 py-2 px-4 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            title={isPlaying ? "Stop playback" : "Read aloud"}
+          >
+            {isPlaying ? <StopIcon /> : <SoundIcon />}
+            <span>{isPlaying ? "Stop" : "Read"}</span>
+          </button>
+        </div>
       </header>
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
         <ChatView

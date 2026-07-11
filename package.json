@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "generate-words": "node scripts/generate-words-3000.cjs",
-    "build-cedict": "node scripts/build-cedict-json.mjs"
+    "build-cedict": "node scripts/build-cedict-json.mjs",
+    "build-hsk": "node scripts/build-hsk-2.0-1-4.mjs"
   },
   "dependencies": {
     "@node-rs/jieba": "^2.0.0",

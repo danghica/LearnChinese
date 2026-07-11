@@ -6,6 +6,7 @@
 - **usage_history:** id, word_id, day (INTEGER, days since Unix epoch). One row per **failed** use of a word; only failures are recorded.
 - **conversations:** id, topic, created_at, updated_at
 - **messages:** id, conversation_id, role (user | assistant), content, created_at
+- **stories:** id, topic, blocks_json (JSON array of `{ chinese, english, chineseComma, chineseWords }`), created_at
 
 ## Vocabulary selection
 
